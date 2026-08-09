@@ -71,11 +71,11 @@ export default function UsersPage() {
                 ))}
               </div>
               <div style={{ fontSize: 12, fontWeight: 600 }}>Assigned Batches</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {batches.map(b => (
                   <button key={b.id} type="button"
-                    className={'btn btn-xs ' + (form.assigned_batches.includes(`${b.sport}::${b.name}`) ? 'btn-primary' : 'btn-outline')}
-                    onClick={() => toggleMulti('assigned_batches', `${b.sport}::${b.name}`)}>{b.name}</button>
+                    className={'btn btn-xs ' + (form.assigned_batches.includes(b.name) ? 'btn-primary' : 'btn-outline')}
+                    onClick={() => toggleMulti('assigned_batches', b.name)}>{b.batchLabel}</button>
                 ))}
               </div>
             </>
