@@ -18,7 +18,6 @@ const STARS = [
 
 export default function LoginScreen() {
   const { login } = useAuth();
-  const [academyId, setAcademyId] = useState('');
   const [id, setId] = useState('');
   const [pass, setPass] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -55,14 +54,6 @@ export default function LoginScreen() {
         <div className="login-title">Welcome Back</div>
         <div className="login-sub">Let's run your academy smarter</div>
         {error && <div className="login-error show">⚠️ <span>{error}</span></div>}
-
-        <div className="login-field">
-          <label>Academy ID</label>
-          <div className="field-wrap">
-            <input type="text" placeholder="Academy short code" autoComplete="off"
-              value={academyId} onChange={e => setAcademyId(e.target.value)} />
-          </div>
-        </div>
 
         <div className="login-field">
           <label>Email / User ID</label>
