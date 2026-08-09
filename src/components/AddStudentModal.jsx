@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { buildBatchKey } from '../lib/batchKey';
 
@@ -16,6 +18,25 @@ function calcAge(dobIso) {
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+function Field({ label, required, children }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--gray)', marginBottom: 5, letterSpacing: '.2px' }}>
+        {label}{required && <span style={{ color: 'var(--red, #dc2626)' }}> *</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function SectionLabel({ children }) {
+  return (
+    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent2)', textTransform: 'uppercase', letterSpacing: '.6px', margin: '4px 0 2px' }}>
+      {children}
+    </div>
+  );
+}
+
 export default function AddStudentModal({ academyId, sports, batches, onClose, onSaved }) {
   const [form, setForm] = useState({
     roll_no: '', name: '', dob: '', parent: '', contact: '', contact2: '', address: '',
@@ -26,6 +47,7 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
 
   const age = calcAge(form.dob);
   const batchOptions = batches.filter(b => b.sport === form.sport);
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const save = async () => {
     if (!form.name || !form.contact) { setError('Full name and Contact Number 1 are required.'); return; }
@@ -41,7 +63,7 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
       contact2: form.contact2 || null,
       address: form.address || null,
       join_date: form.join_date || null,
-      batch: buildBatchKey(form.sport, form.batchLabel), // composite "Sport::BatchName"
+      batch: buildBatchKey(form.sport, form.batchLabel),
       academy_id: academyId,
     });
     setSaving(false);
@@ -49,102 +71,120 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
     onSaved();
   };
 
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500 }}>
-      <div className="card" style={{ background: 'var(--card, #fff)', width: '100%', maxWidth: 480, margin: '0 auto', height: '100%', maxHeight: '100vh', display: 'flex', flexDirection: 'column', borderRadius: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 16px 12px', borderBottom: '1px solid var(--border, #eee)', flexShrink: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>Add Student</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+  const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 };
+
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999 }}>
+      <div style={{
+        background: 'var(--card)', width: '100%', maxWidth: 480, margin: '0 auto',
+        height: '100%', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow)',
+      }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '16px 18px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+          background: 'var(--card2)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>👤</span>
+            <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--offwhite)' }}>Add Student</span>
+          </div>
+          <button onClick={onClose} aria-label="Close"
+            style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 15, color: 'var(--gray)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            ✕
+          </button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-          {error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>{error}</div>}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {error && (
+            <div style={{ fontSize: 12.5, color: '#dc2626', background: 'rgba(220,38,38,.08)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '8px 10px' }}>
+              ⚠️ {error}
+            </div>
+          )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Roll Number</label>
-              <input className="form-input" placeholder="Auto-assigned if blank" value={form.roll_no}
-                onChange={e => setForm({ ...form, roll_no: e.target.value })} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Full Name *</label>
-              <input className="form-input" placeholder="Student full name" value={form.name}
-                onChange={e => setForm({ ...form, name: e.target.value })} />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Date of Birth</label>
-              <input className="form-input" type="date" value={form.dob}
-                onChange={e => setForm({ ...form, dob: e.target.value })} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Age</label>
-              <input className="form-input" value={age} placeholder="Auto-calculated" disabled />
+          <div>
+            <SectionLabel>Basic Details</SectionLabel>
+            <div style={{ ...gridStyle, marginTop: 6 }}>
+              <Field label="Roll Number">
+                <input className="form-input" placeholder="Auto-assigned" value={form.roll_no} onChange={set('roll_no')} />
+              </Field>
+              <Field label="Full Name" required>
+                <input className="form-input" placeholder="Student full name" value={form.name} onChange={set('name')} />
+              </Field>
             </div>
           </div>
 
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Parent / Guardian Name</label>
-            <input className="form-input" placeholder="Parent name" value={form.parent}
-              onChange={e => setForm({ ...form, parent: e.target.value })} />
+            <SectionLabel>Personal Info</SectionLabel>
+            <div style={{ ...gridStyle, marginTop: 6 }}>
+              <Field label="Date of Birth">
+                <input className="form-input" type="date" value={form.dob} onChange={set('dob')} />
+              </Field>
+              <Field label="Age">
+                <input className="form-input" value={age} placeholder="Auto" disabled style={{ opacity: .65, cursor: 'not-allowed' }} />
+              </Field>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <Field label="Parent / Guardian Name">
+                <input className="form-input" placeholder="Parent name" value={form.parent} onChange={set('parent')} />
+              </Field>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <Field label="School Name">
+                <input className="form-input" placeholder="School / College name" value={form.address} onChange={set('address')} />
+              </Field>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Contact Number 1 *</label>
-              <input className="form-input" placeholder="Primary mobile" value={form.contact}
-                onChange={e => setForm({ ...form, contact: e.target.value })} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Contact Number 2</label>
-              <input className="form-input" placeholder="Secondary (optional)" value={form.contact2}
-                onChange={e => setForm({ ...form, contact2: e.target.value })} />
+          <div>
+            <SectionLabel>Contact</SectionLabel>
+            <div style={{ ...gridStyle, marginTop: 6 }}>
+              <Field label="Contact Number 1" required>
+                <input className="form-input" placeholder="Primary mobile" value={form.contact} onChange={set('contact')} />
+              </Field>
+              <Field label="Contact Number 2">
+                <input className="form-input" placeholder="Secondary (optional)" value={form.contact2} onChange={set('contact2')} />
+              </Field>
             </div>
           </div>
 
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>School Name</label>
-            <input className="form-input" placeholder="School / College name" value={form.address}
-              onChange={e => setForm({ ...form, address: e.target.value })} />
-          </div>
-
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Joining Date *</label>
-            <input className="form-input" type="date" value={form.join_date}
-              onChange={e => setForm({ ...form, join_date: e.target.value })} />
-          </div>
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Sport</label>
-              <select className="form-select" value={form.sport}
-                onChange={e => setForm({ ...form, sport: e.target.value, batchLabel: '' })}>
-                {sports.length === 0 && <option value="">No sports added yet</option>}
-                {sports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-              </select>
+            <SectionLabel>Enrollment</SectionLabel>
+            <div style={{ marginTop: 6 }}>
+              <Field label="Joining Date" required>
+                <input className="form-input" type="date" value={form.join_date} onChange={set('join_date')} />
+              </Field>
             </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Batch</label>
-              <select className="form-select" value={form.batchLabel}
-                onChange={e => setForm({ ...form, batchLabel: e.target.value })}>
-                <option value="">— Select Batch —</option>
-                {batchOptions.map(b => <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>)}
-              </select>
+            <div style={{ ...gridStyle, marginTop: 10 }}>
+              <Field label="Sport">
+                <select className="form-select" value={form.sport}
+                  onChange={e => setForm(f => ({ ...f, sport: e.target.value, batchLabel: '' }))}>
+                  {sports.length === 0 && <option value="">No sports added yet</option>}
+                  {sports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Batch">
+                <select className="form-select" value={form.batchLabel} onChange={set('batchLabel')}>
+                  <option value="">Select batch</option>
+                  {batchOptions.map(b => <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>)}
+                </select>
+              </Field>
             </div>
-          </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, padding: 16, borderTop: '1px solid var(--border, #eee)', flexShrink: 0 }}>
-          <button className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>
+        <div style={{
+          display: 'flex', gap: 10, padding: '14px 18px', borderTop: '1px solid var(--border)',
+          flexShrink: 0, background: 'var(--card2)', boxShadow: '0 -4px 12px rgba(0,0,0,.04)',
+        }}>
+          <button className="btn btn-outline" style={{ flex: 1, justifyContent: 'center', padding: '10px 0' }} onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" style={{ flex: 1.4, justifyContent: 'center', padding: '10px 0' }} onClick={save} disabled={saving}>
             {saving ? 'Saving…' : '💾 Save Student'}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
