@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import { exportGenericPdf, exportGenericXlsx } from '../lib/exporters';
 
 export default function FeesTab() {
-  const { visibleStudents, visibleSports, visibleBatches } = useAcademyData();
+  const { visibleStudents, visibleSports } = useAcademyData();
   const { isAdmin, academyId } = useAuth();
   const [fees, setFees] = useState([]);
   const [sportFilter, setSportFilter] = useState('');
@@ -28,7 +28,7 @@ export default function FeesTab() {
   const rows = useMemo(() => fees
     .filter(f => studentsById[f.student_id])
     .map(f => ({ ...f, student: studentsById[f.student_id] }))
-    .filter(f => !sportFilter || f.student.sport === sportFilter)
+    .filter(f => !sportFilter || f.sport === sportFilter)
     .filter(f => !statusFilter || f.status === statusFilter),
     [fees, studentsById, sportFilter, statusFilter]);
 
@@ -40,14 +40,14 @@ export default function FeesTab() {
     setFees(prev => prev.map(f => f.id === feeId ? { ...f, status: 'paid' } : f));
   };
 
-  const exportRows = rows.map(r => ({ Student: r.student.name, Roll: r.student.roll_no, Amount: r.amount, Status: r.status, Due: r.due_date }));
+  const exportRows = rows.map(r => ({ Student: r.student.name, Roll: r.student.roll_no, Month: r.month, Amount: r.amount, Status: r.status }));
 
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>💰 Fees</div>
         <div style={{ display: 'flex', gap: 5 }}>
-          <button className="btn btn-gold btn-sm" onClick={() => exportGenericPdf('Fees Report', ['Student', 'Roll', 'Amount', 'Status', 'Due'], exportRows.map(Object.values), 'fees.pdf')}>PDF</button>
+          <button className="btn btn-gold btn-sm" onClick={() => exportGenericPdf('Fees Report', ['Student', 'Roll', 'Month', 'Amount', 'Status'], exportRows.map(Object.values), 'fees.pdf')}>PDF</button>
           <button className="btn btn-success btn-sm" onClick={() => exportGenericXlsx(exportRows, 'fees.xlsx', 'Fees')}>XL</button>
         </div>
       </div>
@@ -81,7 +81,7 @@ export default function FeesTab() {
           <div key={f.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{f.student.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--gray)' }}>₹{f.amount} · due {f.due_date}</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)' }}>₹{f.amount} · {f.month}</div>
             </div>
             <span className={'badge ' + (f.status === 'paid' ? 'badge-green' : 'badge-red')} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10 }}>
               {f.status}
