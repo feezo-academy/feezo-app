@@ -50,15 +50,17 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
-      <div className="card" style={{ background: 'var(--card)', width: '100%', maxWidth: 420, padding: 20, borderRadius: 14, marginTop: 30, marginBottom: 30 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>Add Student</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500 }}>
+      <div className="card" style={{ background: 'var(--card, #fff)', width: '100%', maxWidth: 480, margin: '0 auto', height: '100%', maxHeight: '100vh', display: 'flex', flexDirection: 'column', borderRadius: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 16px 12px', borderBottom: '1px solid var(--border, #eee)', flexShrink: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 17 }}>Add Student</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
         </div>
-        {error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          {error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>{error}</div>}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)' }}>Roll Number</label>
@@ -133,9 +135,10 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
               </select>
             </div>
           </div>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+        <div style={{ display: 'flex', gap: 8, padding: 16, borderTop: '1px solid var(--border, #eee)', flexShrink: 0 }}>
           <button className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={save} disabled={saving}>
             {saving ? 'Saving…' : '💾 Save Student'}
