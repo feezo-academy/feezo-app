@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
@@ -22,7 +21,7 @@ function Field({ label, required, children }) {
   return (
     <div style={{ minWidth: 0 }}>
       <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--gray)', marginBottom: 5, letterSpacing: '.2px' }}>
-        {label}{required && <span style={{ color: 'var(--red, #dc2626)' }}> *</span>}
+        {label}{required && <span style={{ color: '#dc2626' }}> *</span>}
       </label>
       {children}
     </div>
@@ -37,8 +36,15 @@ function SectionLabel({ children }) {
   );
 }
 
-export default function AddStudentModal({ academyId, sports, batches, onClose, onSaved }) {
-  const [form, setForm] = useState({
+// Pass `student` to edit an existing row instead of creating a new one.
+export default function AddStudentModal({ academyId, sports, batches, student, onClose, onSaved }) {
+  const isEdit = !!student;
+  const [form, setForm] = useState(() => isEdit ? {
+    roll_no: student.roll_no || '', name: student.name || '', dob: student.dob || '',
+    parent: student.parent || '', contact: student.contact || '', contact2: student.contact2 || '',
+    address: student.address || '', join_date: student.join_date || todayIso(),
+    sport: student.sport || sports[0]?.name || '', batchLabel: student.batchLabel || '',
+  } : {
     roll_no: '', name: '', dob: '', parent: '', contact: '', contact2: '', address: '',
     join_date: todayIso(), sport: sports[0]?.name || '', batchLabel: '',
   });
@@ -53,7 +59,7 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
     if (!form.name || !form.contact) { setError('Full name and Contact Number 1 are required.'); return; }
     setSaving(true);
     setError('');
-    const { error: err } = await supabase.from('students').insert({
+    const payload = {
       roll_no: form.roll_no || null,
       name: form.name,
       dob: form.dob || null,
@@ -64,8 +70,10 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
       address: form.address || null,
       join_date: form.join_date || null,
       batch: buildBatchKey(form.sport, form.batchLabel),
-      academy_id: academyId,
-    });
+    };
+    const { error: err } = isEdit
+      ? await supabase.from('students').update(payload).eq('id', student.id)
+      : await supabase.from('students').insert({ ...payload, academy_id: academyId });
     setSaving(false);
     if (err) { setError(err.message); return; }
     onSaved();
@@ -85,8 +93,8 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
           background: 'var(--card2)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 18 }}>👤</span>
-            <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--offwhite)' }}>Add Student</span>
+            <span style={{ fontSize: 18 }}>{isEdit ? '✏️' : '👤'}</span>
+            <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--offwhite)' }}>{isEdit ? 'Edit Student' : 'Add Student'}</span>
           </div>
           <button onClick={onClose} aria-label="Close"
             style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 15, color: 'var(--gray)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -180,7 +188,7 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
             Cancel
           </button>
           <button className="btn btn-primary" style={{ flex: 1.4, justifyContent: 'center', padding: '10px 0' }} onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : '💾 Save Student'}
+            {saving ? 'Saving…' : isEdit ? '💾 Save Changes' : '💾 Save Student'}
           </button>
         </div>
       </div>
