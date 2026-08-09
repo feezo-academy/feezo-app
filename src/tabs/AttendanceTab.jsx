@@ -36,7 +36,7 @@ export default function AttendanceTab() {
   const saveAll = async () => {
     setSaving(true);
     const rows = students.map(s => ({
-      academy_id: academyId, student_id: s.id, date, status: records[s.id] || 'absent',
+      academy_id: academyId, student_id: s.id, date, status: records[s.id] || 'absent', sport: s.sport,
     }));
     await supabase.from('attendance').upsert(rows, { onConflict: 'academy_id,student_id,date' });
     setSaving(false);
@@ -60,7 +60,7 @@ export default function AttendanceTab() {
           value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
           <option value="">All Batches</option>
           {visibleBatches.filter(b => !sportFilter || b.sport === sportFilter).map(b => (
-            <option key={b.id} value={b.name}>{b.name}</option>
+            <option key={b.id} value={b.name}>{b.batchLabel}</option>
           ))}
         </select>
       </div>
@@ -76,7 +76,7 @@ export default function AttendanceTab() {
             <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--gray)' }}>#{s.roll_no} · {s.batch}</div>
+                <div style={{ fontSize: 12, color: 'var(--gray)' }}>#{s.roll_no} · {s.batchLabel}</div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 {['present', 'absent', 'leave'].map(opt => (
