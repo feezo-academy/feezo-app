@@ -86,7 +86,7 @@ export default function StudentsTab() {
           <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
             value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
             <option value="">All Batches</option>
-            {batchesForSport.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+            {batchesForSport.map(b => <option key={b.id} value={b.name}>{b.batchLabel}</option>)}
           </select>
           <select className="form-select" style={{ flex: 1, minWidth: 120, fontSize: 12, padding: '7px 9px' }}
             value={sortBy} onChange={e => setSortBy(e.target.value)}>
@@ -115,7 +115,7 @@ export default function StudentsTab() {
             )}
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name} <span style={{ color: 'var(--gray)', fontWeight: 500, fontSize: 12 }}>#{s.roll_no}</span></div>
-              <div style={{ fontSize: 12, color: 'var(--gray)' }}>{s.sport} · {s.batch}</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)' }}>{s.sport} · {s.batchLabel}</div>
             </div>
           </div>
         ))}
@@ -132,4 +132,4 @@ export default function StudentsTab() {
       )}
     </div>
   );
-}
+          }
