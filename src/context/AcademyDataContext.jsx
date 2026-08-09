@@ -1,14 +1,15 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './AuthContext';
+import { parseBatchKey } from '../lib/batchKey';
 
 const AcademyDataContext = createContext(null);
 
 export function AcademyDataProvider({ children }) {
   const { academyId, isAdmin, assignedSports, assignedBatches } = useAuth();
   const [sports, setSports] = useState([]);
-  const [batches, setBatches] = useState([]);
-  const [students, setStudents] = useState([]);
+  const [rawBatches, setRawBatches] = useState([]);
+  const [rawStudents, setRawStudents] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -20,15 +21,27 @@ export function AcademyDataProvider({ children }) {
       supabase.from('students').select('*').eq('academy_id', academyId),
     ]);
     setSports(sp.data || []);
-    setBatches(bt.data || []);
-    setStudents(st.data || []);
+    setRawBatches(bt.data || []);
+    setRawStudents(st.data || []);
     setLoading(false);
   }, [academyId]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Staff scoping: restrict dropdowns to assigned sports/batches unless admin.
-  // Batches use composite key Sport::Name for sport-scoping.
+  // batches.name and students.batch are stored as "Sport::BatchName" composite
+  // keys (same batch label can exist under multiple sports), so derive a
+  // usable `sport` + `batchLabel` on every row rather than assuming a
+  // separate `sport` column exists.
+  const batches = useMemo(() => rawBatches.map(b => {
+    const { sport, label } = parseBatchKey(b.name);
+    return { ...b, sport, batchLabel: label };
+  }), [rawBatches]);
+
+  const students = useMemo(() => rawStudents.map(s => {
+    const { sport, label } = parseBatchKey(s.batch);
+    return { ...s, sport, batchLabel: label };
+  }), [rawStudents]);
+
   const visibleSports = useMemo(() => {
     if (isAdmin) return sports;
     return sports.filter(s => assignedSports.includes(s.name));
@@ -36,10 +49,7 @@ export function AcademyDataProvider({ children }) {
 
   const visibleBatches = useMemo(() => {
     if (isAdmin) return batches;
-    return batches.filter(b => {
-      const key = `${b.sport}::${b.name}`;
-      return assignedBatches.includes(key) || assignedBatches.includes(b.name);
-    });
+    return batches.filter(b => assignedBatches.includes(b.name)); // b.name is the full composite key
   }, [batches, isAdmin, assignedBatches]);
 
   const visibleStudents = useMemo(() => {
