@@ -77,7 +77,7 @@ export default function HomeTab() {
             value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
             <option value="ALL">All Batches</option>
             {visibleBatches.filter(b => sportFilter === 'ALL' || b.sport === sportFilter).map(b => (
-              <option key={b.id} value={b.name}>{b.name}</option>
+              <option key={b.id} value={b.name}>{b.batchLabel}</option>
             ))}
           </select>
         </div>
@@ -93,7 +93,7 @@ export default function HomeTab() {
           <div className="stat-icon">🆕</div>
           <div className="stat-label">Joined</div>
           <div className="stat-val">{students.filter(s => {
-            const j = s.joined_date ? new Date(s.joined_date) : null;
+            const j = s.join_date ? new Date(s.join_date) : null; 
             return j && j.getMonth() === month && j.getFullYear() === year;
           }).length}</div>
         </div>
