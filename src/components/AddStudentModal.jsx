@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { buildBatchKey } from '../lib/batchKey';
 
 export default function AddStudentModal({ academyId, sports, batches, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: '', roll_no: '', sport: sports[0]?.name || '', batch: '', phone: '' });
+  const [form, setForm] = useState({ name: '', roll_no: '', sport: sports[0]?.name || '', batchLabel: '', contact: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -12,7 +13,13 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
     if (!form.name || !form.roll_no) { setError('Name and roll number are required.'); return; }
     setSaving(true);
     setError('');
-    const { error: err } = await supabase.from('students').insert({ ...form, academy_id: academyId });
+    const { error: err } = await supabase.from('students').insert({
+      name: form.name,
+      roll_no: form.roll_no,
+      batch: buildBatchKey(form.sport, form.batchLabel), // composite "Sport::BatchName"
+      contact: form.contact,
+      academy_id: academyId,
+    });
     setSaving(false);
     if (err) { setError(err.message); return; }
     onSaved();
@@ -29,16 +36,16 @@ export default function AddStudentModal({ academyId, sports, batches, onClose, o
           <input className="form-input" placeholder="Roll number" value={form.roll_no}
             onChange={e => setForm({ ...form, roll_no: e.target.value })} />
           <select className="form-select" value={form.sport}
-            onChange={e => setForm({ ...form, sport: e.target.value, batch: '' })}>
+            onChange={e => setForm({ ...form, sport: e.target.value, batchLabel: '' })}>
             {sports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
-          <select className="form-select" value={form.batch}
-            onChange={e => setForm({ ...form, batch: e.target.value })}>
+          <select className="form-select" value={form.batchLabel}
+            onChange={e => setForm({ ...form, batchLabel: e.target.value })}>
             <option value="">Select batch</option>
-            {batchOptions.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+            {batchOptions.map(b => <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>)}
           </select>
-          <input className="form-input" placeholder="Phone" value={form.phone}
-            onChange={e => setForm({ ...form, phone: e.target.value })} />
+          <input className="form-input" placeholder="Contact number" value={form.contact}
+            onChange={e => setForm({ ...form, contact: e.target.value })} />
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
