@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase
       .from('app_users')
       .select('*')
-      .eq('auth_uid', authUser.id)
+      .eq('id', authUser.id)
       .maybeSingle();
     if (!error && data) {
       setAppUser(data);
@@ -36,7 +36,9 @@ export function AuthProvider({ children }) {
     return () => sub.subscription.unsubscribe();
   }, [loadAppUser]);
 
-  const login = async (email, password) => {
+  const login = async (rawId, password) => {
+    const id = rawId.trim().toLowerCase();
+    const email = id.includes('@') ? id : id + '@gmail.com';
     const { data, error } = await signIn(email, password);
     if (error) throw error;
     return data;
@@ -49,15 +51,15 @@ export function AuthProvider({ children }) {
     setAcademyId(null);
   };
 
-  // Permission helper: superadmin/admin see everything, staff restricted to assigned sports/batches
-  const isAdmin = appUser?.role === 'admin' || appUser?.role === 'superadmin';
-  const isSuperadmin = appUser?.role === 'superadmin';
+  // Permission helper: admin sees everything, staff restricted to assigned sports/batches
+  const roles = (appUser?.role || '').split(',').map(r => r.trim());
+  const isAdmin = roles.includes('admin');
   const assignedSports = appUser?.assigned_sports || [];
   const assignedBatches = appUser?.assigned_batches || [];
 
   const value = {
     user, appUser, academyId, loading,
-    isAdmin, isSuperadmin, assignedSports, assignedBatches,
+    isAdmin, assignedSports, assignedBatches,
     login, logout, refreshAppUser: () => loadAppUser(user),
   };
 
