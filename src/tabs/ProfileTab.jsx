@@ -12,7 +12,7 @@ const ADMIN_LINKS = [
 ];
 
 export default function ProfileTab() {
-  const { user, appUser, isAdmin, isSuperadmin, logout } = useAuth();
+  const { user, appUser, isAdmin, logout } = useAuth();
 
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
@@ -25,7 +25,7 @@ export default function ProfileTab() {
         <div style={{ fontWeight: 800, fontSize: 16 }}>{appUser?.name || 'Staff Member'}</div>
         <div style={{ fontSize: 12, color: 'var(--gray)' }}>{user?.email}</div>
         <div style={{ marginTop: 8, display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: 'var(--card2)', color: 'var(--accent2)' }}>
-          {isSuperadmin ? 'Superadmin' : isAdmin ? 'Admin' : 'Staff'}
+          {isAdmin ? 'Admin' : 'Staff'}
         </div>
       </div>
 
