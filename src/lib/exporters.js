@@ -35,3 +35,20 @@ export function exportGenericPdf(title, columns, rows, filename) {
   autoTable(doc, { startY: 20, head: [columns], body: rows });
   doc.save(filename);
 }
+
+// Attendance exports take pre-built row arrays so the PDF and XLSX always
+// show identical columns in identical order (day view or period-summary view).
+export function exportAttendancePdf(title, columns, rows, filename) {
+  const doc = new jsPDF();
+  doc.text(title, 14, 14);
+  autoTable(doc, { startY: 20, head: [columns], body: rows, styles: { fontSize: 8.5 } });
+  doc.save(filename);
+}
+
+export function exportAttendanceXlsx(columns, rows, filename, sheetName = 'Attendance') {
+  const ws = XLSX.utils.aoa_to_sheet([columns, ...rows]);
+  ws['!cols'] = columns.map(() => ({ wch: 14 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, filename);
+}
