@@ -9,7 +9,7 @@ export default function UsersPage() {
   const { sports, batches } = useAcademyData();
   const [users, setUsers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', role: 'staff', assigned_sports: [], assigned_batches: [] });
+  const [form, setForm] = useState({ name: '', email: '', role: 'staff', assigned_sports: [], assigned_batches: [], can_view_contact: false });
   const [error, setError] = useState('');
 
   const load = async () => {
@@ -32,7 +32,7 @@ export default function UsersPage() {
     setError('');
     const { error: err } = await supabase.from('app_users').insert({ ...form, academy_id: academyId });
     if (err) { setError(err.message); return; }
-    setForm({ name: '', email: '', role: 'staff', assigned_sports: [], assigned_batches: [] });
+    setForm({ name: '', email: '', role: 'staff', assigned_sports: [], assigned_batches: [], can_view_contact: false });
     setShowAdd(false);
     load();
   };
@@ -41,6 +41,12 @@ export default function UsersPage() {
     if (!confirm('Remove this staff member?')) return;
     await supabase.from('app_users').delete().eq('id', id);
     load();
+  };
+
+  const toggleContactAccess = async (u) => {
+    const next = !u.can_view_contact;
+    await supabase.from('app_users').update({ can_view_contact: next }).eq('id', u.id);
+    setUsers(prev => prev.map(x => x.id === u.id ? { ...x, can_view_contact: next } : x));
   };
 
   return (
@@ -78,6 +84,11 @@ export default function UsersPage() {
                     onClick={() => toggleMulti('assigned_batches', b.name)}>{b.batchLabel}</button>
                 ))}
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, marginTop: 4 }}>
+                <input type="checkbox" checked={form.can_view_contact}
+                  onChange={e => setForm({ ...form, can_view_contact: e.target.checked })} />
+                📞 Allow viewing student contact numbers
+              </label>
             </>
           )}
           <button className="btn btn-primary btn-sm" onClick={addUser}>Save Staff Member</button>
@@ -92,9 +103,15 @@ export default function UsersPage() {
           </div>
           <div style={{ fontSize: 12, color: 'var(--gray)' }}>{u.email}</div>
           {u.role === 'staff' && (
-            <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-              Sports: {(u.assigned_sports || []).join(', ') || '—'}
-            </div>
+            <>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
+                Sports: {(u.assigned_sports || []).join(', ') || '—'}
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, marginTop: 6 }}>
+                <input type="checkbox" checked={!!u.can_view_contact} onChange={() => toggleContactAccess(u)} />
+                📞 Can view student contact numbers
+              </label>
+            </>
           )}
           <button className="btn btn-xs" style={{ marginTop: 8, background: 'var(--red)', color: '#fff', border: 'none' }} onClick={() => removeUser(u.id)}>Remove</button>
         </div>
