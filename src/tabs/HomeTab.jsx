@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import StatDrilldownModal from '../components/StatDrilldownModal';
 
 export default function HomeTab() {
   const { visibleStudents, visibleSports, visibleBatches } = useAcademyData();
@@ -13,6 +14,7 @@ export default function HomeTab() {
   const [batchFilter, setBatchFilter] = useState('ALL');
   const [fees, setFees] = useState([]);
   const [attWeek, setAttWeek] = useState([]);
+  const [drilldown, setDrilldown] = useState(null); // { title, icon, students } | null
 
   useEffect(() => {
     (async () => {
@@ -20,7 +22,6 @@ export default function HomeTab() {
       const { data: feeData } = await supabase.from('fees').select('*').eq('academy_id', academyId);
       setFees(feeData || []);
 
-      // last 7 days attendance counts, for the bar chart
       const days = Array.from({ length: 7 }, (_, i) => {
         const d = new Date(); d.setDate(d.getDate() - (6 - i));
         return d.toISOString().slice(0, 10);
@@ -42,8 +43,30 @@ export default function HomeTab() {
 
   const studentIds = new Set(students.map(s => s.id));
   const scopedFees = fees.filter(f => studentIds.has(f.student_id));
-  const collected = scopedFees.filter(f => f.status === 'paid').reduce((s, f) => s + (Number(f.amount) || 0), 0);
-  const pending = scopedFees.filter(f => f.status !== 'paid').length;
+  const studentsById = useMemo(() => {
+    const m = {}; students.forEach(s => { m[s.id] = s; }); return m;
+  }, [students]);
+
+  const collectedFees = scopedFees.filter(f => f.status === 'paid');
+  const pendingFees = scopedFees.filter(f => f.status !== 'paid');
+  const collected = collectedFees.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+  const pending = pendingFees.length;
+
+  const joinedStudents = students.filter(s => {
+    const j = s.join_date ? new Date(s.join_date) : null;
+    return j && j.getMonth() === month && j.getFullYear() === year;
+  });
+
+  // Dedupe by student, tag with amount/month for context in the drilldown list
+  const feeStudentList = (feeRows) => {
+    const seen = new Map();
+    feeRows.forEach(f => {
+      const s = studentsById[f.student_id];
+      if (!s) return;
+      if (!seen.has(s.id)) seen.set(s.id, { ...s, extra: `₹${f.amount}${f.month ? ' · ' + f.month : ''}` });
+    });
+    return Array.from(seen.values());
+  };
 
   const monthLabel = new Date(year, month, 1).toLocaleDateString([], { month: 'short', year: 'numeric' });
   const nav = (unit, dir) => {
@@ -84,25 +107,26 @@ export default function HomeTab() {
       </div>
 
       <div className="stats-grid" style={{ flexShrink: 0 }}>
-        <div className="stat-card grad stat-blue">
+        <div className="stat-card grad stat-blue" style={{ cursor: 'pointer' }}
+          onClick={() => setDrilldown({ title: 'Total Students', icon: '👥', students })}>
           <div className="stat-icon">👥</div>
           <div className="stat-label">Total Students</div>
           <div className="stat-val">{students.length}</div>
         </div>
-        <div className="stat-card grad stat-orange">
+        <div className="stat-card grad stat-orange" style={{ cursor: 'pointer' }}
+          onClick={() => setDrilldown({ title: 'Joined This Month', icon: '🆕', students: joinedStudents })}>
           <div className="stat-icon">🆕</div>
           <div className="stat-label">Joined</div>
-          <div className="stat-val">{students.filter(s => {
-            const j = s.join_date ? new Date(s.join_date) : null; 
-            return j && j.getMonth() === month && j.getFullYear() === year;
-          }).length}</div>
+          <div className="stat-val">{joinedStudents.length}</div>
         </div>
-        <div className="stat-card grad stat-green">
+        <div className="stat-card grad stat-green" style={{ cursor: 'pointer' }}
+          onClick={() => setDrilldown({ title: 'Fees Collected', icon: '✅', students: feeStudentList(collectedFees) })}>
           <div className="stat-icon">✅</div>
           <div className="stat-label">Fees Collected</div>
           <div className="stat-val" style={{ fontSize: 16 }}>₹{collected.toLocaleString()}</div>
         </div>
-        <div className="stat-card grad stat-red">
+        <div className="stat-card grad stat-red" style={{ cursor: 'pointer' }}
+          onClick={() => setDrilldown({ title: 'Fee Pending', icon: '⚠️', students: feeStudentList(pendingFees) })}>
           <div className="stat-icon">⚠️</div>
           <div className="stat-label">Fee Pending</div>
           <div className="stat-val">{pending}</div>
@@ -121,6 +145,15 @@ export default function HomeTab() {
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {drilldown && (
+        <StatDrilldownModal
+          title={drilldown.title}
+          icon={drilldown.icon}
+          students={drilldown.students}
+          onClose={() => setDrilldown(null)}
+        />
+      )}
     </div>
   );
 }
