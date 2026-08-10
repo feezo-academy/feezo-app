@@ -9,7 +9,7 @@ import { exportStudentsPdf, exportStudentsXlsx } from '../lib/exporters';
 
 export default function StudentsTab() {
   const { visibleStudents, visibleSports, visibleBatches, refresh } = useAcademyData();
-  const { isAdmin, academyId } = useAuth();
+  const { isAdmin, academyId, canViewContact } = useAuth();
   const [search, setSearch] = useState('');
   const [sportFilter, setSportFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
@@ -64,9 +64,11 @@ export default function StudentsTab() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div className="section-title" style={{ marginBottom: 0, whiteSpace: 'nowrap' }}>👥 Students</div>
-          <div style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, background: 'var(--card2)', color: 'var(--gray)' }}>
-            {visibleStudents.length} total
-          </div>
+          {isAdmin && (
+            <div style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, background: 'var(--card2)', color: 'var(--gray)' }}>
+              {visibleStudents.length} total
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button className="btn btn-gold btn-sm" onClick={() => exportStudentsPdf(filtered)}>PDF</button>
@@ -122,8 +124,6 @@ export default function StudentsTab() {
             )}
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name} <span style={{ color: 'var(--gray)', fontWeight: 500, fontSize: 12 }}>#{s.roll_no}</span></div>
-              <div style={{ fontSize: 12, color: 'var(--gray)' }}>{s.sport} · {s.batchLabel}</div>
-              {s.contact && <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>📞 {s.contact}</div>}
             </div>
             <span style={{ color: 'var(--gray)' }}>›</span>
           </div>
@@ -156,6 +156,7 @@ export default function StudentsTab() {
           student={detailStudent}
           academyId={academyId}
           isAdmin={isAdmin}
+          canViewContact={canViewContact}
           onClose={() => setDetailStudent(null)}
           onEdit={(s) => setEditStudent(s)}
           onChanged={refresh}
