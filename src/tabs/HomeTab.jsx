@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
@@ -8,56 +8,93 @@ import StatDrilldownModal from '../components/StatDrilldownModal';
 export default function HomeTab() {
   const { visibleStudents, visibleSports, visibleBatches } = useAcademyData();
   const { academyId } = useAuth();
-  const [month, setMonth] = useState(new Date().getMonth());
-  const [year, setYear] = useState(new Date().getFullYear());
+  const today = new Date();
+  const [month, setMonth] = useState(today.getMonth());
+  const [year, setYear] = useState(today.getFullYear());
   const [sportFilter, setSportFilter] = useState('ALL');
   const [batchFilter, setBatchFilter] = useState('ALL');
   const [fees, setFees] = useState([]);
-  const [attWeek, setAttWeek] = useState([]);
-  const [drilldown, setDrilldown] = useState(null); // { title, icon, students } | null
+  const [attRows, setAttRows] = useState([]);
+  const [chartMode, setChartMode] = useState('attendance'); // 'attendance' | 'strength'
+  const [drilldown, setDrilldown] = useState(null);
+
+  // Date range for the selected month: 1st -> today (if current month) or end of month (past months)
+  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
+  const isFutureMonth = new Date(year, month, 1) > today;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const endDay = isFutureMonth ? 0 : isCurrentMonth ? today.getDate() : daysInMonth;
+  const dateRange = Array.from({ length: endDay }, (_, i) => {
+    const d = new Date(year, month, i + 1);
+    return d.toISOString().slice(0, 10);
+  });
 
   useEffect(() => {
     (async () => {
       if (!academyId) return;
       const { data: feeData } = await supabase.from('fees').select('*').eq('academy_id', academyId);
       setFees(feeData || []);
-
-      const days = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(); d.setDate(d.getDate() - (6 - i));
-        return d.toISOString().slice(0, 10);
-      });
-      const { data: attData } = await supabase.from('attendance').select('date,status')
-        .eq('academy_id', academyId).in('date', days);
-      const chart = days.map(d => ({
-        day: d.slice(5),
-        present: (attData || []).filter(a => a.date === d && a.status === 'present').length,
-        absent: (attData || []).filter(a => a.date === d && a.status === 'absent').length,
-      }));
-      setAttWeek(chart);
     })();
   }, [academyId]);
+
+  useEffect(() => {
+    (async () => {
+      if (!academyId || dateRange.length === 0) { setAttRows([]); return; }
+      const { data } = await supabase.from('attendance').select('date,status,student_id')
+        .eq('academy_id', academyId)
+        .gte('date', dateRange[0]).lte('date', dateRange[dateRange.length - 1]);
+      setAttRows(data || []);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [academyId, month, year]);
 
   const students = useMemo(() => visibleStudents.filter(s =>
     (sportFilter === 'ALL' || s.sport === sportFilter) && (batchFilter === 'ALL' || s.batch === batchFilter)
   ), [visibleStudents, sportFilter, batchFilter]);
 
-  const studentIds = new Set(students.map(s => s.id));
-  const scopedFees = fees.filter(f => studentIds.has(f.student_id));
+  const studentIds = useMemo(() => new Set(students.map(s => s.id)), [students]);
   const studentsById = useMemo(() => {
     const m = {}; students.forEach(s => { m[s.id] = s; }); return m;
   }, [students]);
 
-  const collectedFees = scopedFees.filter(f => f.status === 'paid');
-  const pendingFees = scopedFees.filter(f => f.status !== 'paid');
-  const collected = collectedFees.reduce((s, f) => s + (Number(f.amount) || 0), 0);
-  const pending = pendingFees.length;
+  // Chart series: attendance (present count per day) and strength (active headcount per day)
+  const chartData = useMemo(() => dateRange.map(dateStr => {
+    const day = parseInt(dateStr.slice(-2), 10);
+    const present = attRows.filter(a => a.date === dateStr && a.status === 'present' && studentIds.has(a.student_id)).length;
+    const strength = students.filter(s => {
+      if (!s.join_date || s.join_date > dateStr) return false;
+      if (s.banned && (!s.banned_on || s.banned_on.slice(0, 10) <= dateStr)) return false;
+      return true;
+    }).length;
+    return { day, dateStr, present, strength };
+  }), [dateRange, attRows, studentIds, students]);
+
+  // Tiles scoped to the same month/sport/batch filters
+  const currentStrength = chartData.length ? chartData[chartData.length - 1].strength : students.length;
 
   const joinedStudents = students.filter(s => {
     const j = s.join_date ? new Date(s.join_date) : null;
     return j && j.getMonth() === month && j.getFullYear() === year;
   });
 
-  // Dedupe by student, tag with amount/month for context in the drilldown list
+  // Fees scoped to the selected month where possible; f.month is free-text so
+  // we match it loosely against a few common formats used when fees were logged.
+  const monthLabelShort = new Date(year, month, 1).toLocaleDateString([], { month: 'short', year: 'numeric' });
+  const monthLabelLong = new Date(year, month, 1).toLocaleDateString([], { month: 'long', year: 'numeric' });
+  const monthIso = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const feeMatchesMonth = (f) => {
+    if (!f.month) return false;
+    const m = String(f.month).toLowerCase();
+    return m.includes(monthLabelShort.toLowerCase()) || m.includes(monthLabelLong.toLowerCase()) || m.includes(monthIso);
+  };
+  const scopedFeesAll = fees.filter(f => studentIds.has(f.student_id));
+  const scopedFeesMonth = scopedFeesAll.filter(feeMatchesMonth);
+  const scopedFees = scopedFeesMonth.length > 0 ? scopedFeesMonth : scopedFeesAll; // fall back if month text doesn't match anything
+
+  const collectedFees = scopedFees.filter(f => f.status === 'paid');
+  const pendingFees = scopedFees.filter(f => f.status !== 'paid');
+  const collected = collectedFees.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+  const pending = pendingFees.length;
+
   const feeStudentList = (feeRows) => {
     const seen = new Map();
     feeRows.forEach(f => {
@@ -68,7 +105,7 @@ export default function HomeTab() {
     return Array.from(seen.values());
   };
 
-  const monthLabel = new Date(year, month, 1).toLocaleDateString([], { month: 'short', year: 'numeric' });
+  const monthLabel = monthLabelShort;
   const nav = (unit, dir) => {
     if (unit === 'month') {
       let m = month + dir, y = year;
@@ -79,10 +116,13 @@ export default function HomeTab() {
     }
   };
 
+  const modeColor = chartMode === 'attendance' ? '#4caf8e' : '#5b7cc4';
+  const modeLabel = chartMode === 'attendance' ? 'Present' : 'Active Students';
+
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
-      <div style={{ marginBottom: 12 }}>
-        <div className="section-title" style={{ marginBottom: 8 }}>📈 Dashboard</div>
+      <div style={{ marginBottom: 14 }}>
+        <div className="section-title" style={{ marginBottom: 10 }}>📈 Dashboard</div>
         <div className="my-nav">
           <button className="my-nav-btn yr" onClick={() => nav('year', -1)} title="Previous Year">&lt;&lt;</button>
           <button className="my-nav-btn" onClick={() => nav('month', -1)} title="Previous Month">&lt;</button>
@@ -108,10 +148,10 @@ export default function HomeTab() {
 
       <div className="stats-grid" style={{ flexShrink: 0 }}>
         <div className="stat-card grad stat-blue" style={{ cursor: 'pointer' }}
-          onClick={() => setDrilldown({ title: 'Total Students', icon: '👥', students })}>
+          onClick={() => setDrilldown({ title: 'Active Students', icon: '👥', students })}>
           <div className="stat-icon">👥</div>
           <div className="stat-label">Total Students</div>
-          <div className="stat-val">{students.length}</div>
+          <div className="stat-val">{currentStrength}</div>
         </div>
         <div className="stat-card grad stat-orange" style={{ cursor: 'pointer' }}
           onClick={() => setDrilldown({ title: 'Joined This Month', icon: '🆕', students: joinedStudents })}>
@@ -133,17 +173,52 @@ export default function HomeTab() {
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 10, padding: '10px 10px 8px' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>📊 Attendance (last 7 days)</div>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={attWeek}>
-            <XAxis dataKey="day" fontSize={10} />
-            <YAxis fontSize={10} allowDecimals={false} />
-            <Tooltip />
-            <Bar dataKey="present" fill="#4caf8e" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="absent" fill="#e06b6b" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+      <div className="card" style={{ marginTop: 12, padding: '14px 14px 10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800 }}>
+            {chartMode === 'attendance' ? '📊 Attendance' : '📈 Strength'} · <span style={{ color: 'var(--gray)', fontWeight: 600 }}>{monthLabel}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 2, background: 'var(--royal)', borderRadius: 8, padding: 2 }}>
+            {['attendance', 'strength'].map(m => (
+              <button key={m} onClick={() => setChartMode(m)}
+                style={{
+                  border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 11.5, fontWeight: 700,
+                  cursor: 'pointer', textTransform: 'capitalize',
+                  background: chartMode === m ? 'var(--accent2)' : 'transparent',
+                  color: chartMode === m ? '#fff' : 'var(--gray)',
+                  transition: 'all .15s ease',
+                }}>
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {chartData.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--gray)', padding: '30px 0', fontSize: 13 }}>No data yet for this month.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={190}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+              <defs>
+                <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={modeColor} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={modeColor} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+              <XAxis dataKey="day" fontSize={10.5} stroke="var(--gray)" tickLine={false} axisLine={false}
+                interval={chartData.length > 15 ? 2 : 0} />
+              <YAxis fontSize={10.5} stroke="var(--gray)" allowDecimals={false} tickLine={false} axisLine={false} width={26} />
+              <Tooltip
+                labelFormatter={(day) => `Day ${day}`}
+                formatter={(val) => [val, modeLabel]}
+                contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+              />
+              <Area type="monotone" dataKey={chartMode === 'attendance' ? 'present' : 'strength'}
+                stroke={modeColor} strokeWidth={2.5} fill="url(#chartFill)" dot={false} activeDot={{ r: 4 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {drilldown && (
