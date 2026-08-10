@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import AchievementsSection from './AchievementsSection';
@@ -25,20 +25,9 @@ function Row({ label, value }) {
 }
 
 export default function StudentDetailModal({ student, academyId, isAdmin, canViewContact, onClose, onEdit, onChanged }) {
-  const [attStatus, setAttStatus] = useState(null); // 'present' | 'absent' | null
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const today = new Date().toISOString().slice(0, 10);
-      const { data } = await supabase.from('attendance').select('status')
-        .eq('academy_id', academyId).eq('student_id', student.id).eq('date', today).maybeSingle();
-      setAttStatus(data?.status || null);
-    })();
-  }, [student.id, academyId]);
-
   const isBanned = !!student.banned;
-  const attTxt = attStatus === 'present' ? '✅ Present today' : attStatus === 'absent' ? '❌ Absent today' : '— Not marked today';
 
   const toggleBan = async () => {
     setBusy(true);
@@ -78,11 +67,11 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
               </div>
             )}
             <div style={{ fontSize: 18, fontWeight: 800 }}>{student.name}</div>
-            <div style={{ marginTop: 6, display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10 }}>{student.batchLabel}</span>
-              {isBanned && <span className="badge badge-red" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10 }}>Dropout</span>}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6 }}>{attTxt}</div>
+            {isBanned && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <span className="badge badge-red" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10 }}>Dropout</span>
+              </div>
+            )}
           </div>
 
           <Row label="Age" value={student.dob ? calcAge(student.dob) : student.age} />
