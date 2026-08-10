@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
+import AchievementsSection from './AchievementsSection';
 
 function calcAge(dobIso) {
   if (!dobIso) return '';
@@ -23,7 +24,7 @@ function Row({ label, value }) {
   );
 }
 
-export default function StudentDetailModal({ student, academyId, onClose, onEdit, onChanged }) {
+export default function StudentDetailModal({ student, academyId, isAdmin, onClose, onEdit, onChanged }) {
   const [attStatus, setAttStatus] = useState(null); // 'present' | 'absent' | null
   const [busy, setBusy] = useState(false);
 
@@ -98,6 +99,8 @@ export default function StudentDetailModal({ student, academyId, onClose, onEdit
               {student.sport} · {student.batchLabel}
             </span>
           </div>
+
+          <AchievementsSection studentId={student.id} academyId={academyId} canEdit={isAdmin} />
         </div>
 
         <div style={{ display: 'flex', gap: 6, padding: 16, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
