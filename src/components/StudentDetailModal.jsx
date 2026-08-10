@@ -24,7 +24,7 @@ function Row({ label, value }) {
   );
 }
 
-export default function StudentDetailModal({ student, academyId, isAdmin, onClose, onEdit, onChanged }) {
+export default function StudentDetailModal({ student, academyId, isAdmin, canViewContact, onClose, onEdit, onChanged }) {
   const [attStatus, setAttStatus] = useState(null); // 'present' | 'absent' | null
   const [busy, setBusy] = useState(false);
 
@@ -87,8 +87,9 @@ export default function StudentDetailModal({ student, academyId, isAdmin, onClos
 
           <Row label="Age" value={student.dob ? calcAge(student.dob) : student.age} />
           <Row label="Date of Birth" value={student.dob} />
-          <Row label="Contact 1" value={student.contact} />
-          <Row label="Contact 2" value={student.contact2} />
+          <Row label="Contact 1" value={canViewContact ? student.contact : null} />
+          <Row label="Contact 2" value={canViewContact ? student.contact2 : null} />
+          {!canViewContact && <div style={{ fontSize: 11, color: 'var(--gray)', padding: '4px 0' }}>🔒 Contact number hidden. Ask admin to grant access.</div>}
           <Row label="Parent / Guardian" value={student.parent} />
           <Row label="School" value={student.address} />
           <Row label="Joined" value={student.join_date} />
