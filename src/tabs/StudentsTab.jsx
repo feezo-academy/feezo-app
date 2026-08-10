@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import AddStudentModal from '../components/AddStudentModal';
 import StudentDetailModal from '../components/StudentDetailModal';
 import ImportStudentsModal from '../components/ImportStudentsModal';
+import BulkEditStudentsModal from '../components/BulkEditStudentsModal';
 import { exportStudentsPdf, exportStudentsXlsx } from '../lib/exporters';
 
 export default function StudentsTab() {
@@ -17,6 +18,7 @@ export default function StudentsTab() {
   const [selected, setSelected] = useState(new Set());
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [detailStudent, setDetailStudent] = useState(null);
   const [editStudent, setEditStudent] = useState(null);
 
@@ -40,6 +42,10 @@ export default function StudentsTab() {
     });
     return list;
   }, [visibleStudents, sportFilter, batchFilter, search, sortBy]);
+
+  // Dropped (banned) students sink to the bottom under their own section.
+  const activeList = useMemo(() => filtered.filter(s => !s.banned), [filtered]);
+  const droppedList = useMemo(() => filtered.filter(s => s.banned), [filtered]);
 
   const batchesForSport = visibleBatches.filter(b => !sportFilter || b.sport === sportFilter);
 
@@ -110,24 +116,50 @@ export default function StudentsTab() {
         <div style={{ background: 'var(--accent)', border: '1px solid var(--accent2)', borderRadius: 10, padding: '9px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--gold)' }}>{selected.size} selected</div>
           <button className="btn btn-xs btn-outline" onClick={() => setSelected(new Set())} style={{ fontSize: 11 }}>✕ Deselect All</button>
+          <button className="btn btn-xs btn-primary" onClick={() => setShowBulkEdit(true)} style={{ fontSize: 11 }}>✏️ Bulk Edit</button>
           <button className="btn btn-xs" onClick={bulkDelete} style={{ fontSize: 11, background: 'var(--red)', color: '#fff', border: 'none' }}>🗑️ Delete</button>
         </div>
       )}
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90, marginTop: 4 }}>
         {filtered.length === 0 && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 30 }}>No students found.</div>}
-        {filtered.map(s => (
+        {activeList.map(s => (
           <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8, cursor: 'pointer' }}
             onClick={(e) => { if (e.target.type !== 'checkbox') setDetailStudent(s); }}>
             {isAdmin && (
               <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} onClick={e => e.stopPropagation()} />
             )}
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name} <span style={{ color: 'var(--gray)', fontWeight: 500, fontSize: 12 }}>#{s.roll_no}</span></div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}><span style={{ color: 'var(--gray)', fontWeight: 500, fontSize: 12 }}>#{s.roll_no}</span> {s.name}</div>
             </div>
             <span style={{ color: 'var(--gray)' }}>›</span>
           </div>
         ))}
+
+        {droppedList.length > 0 && (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px', margin: '16px 0 8px' }}>
+              🚫 Dropped Students
+            </div>
+            {droppedList.map(s => (
+              <div key={s.id} className="card" style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8, cursor: 'pointer',
+                filter: 'blur(3px)', opacity: 0.7, transition: 'filter .15s, opacity .15s',
+              }}
+                onMouseEnter={e => { e.currentTarget.style.filter = 'none'; e.currentTarget.style.opacity = 1; }}
+                onMouseLeave={e => { e.currentTarget.style.filter = 'blur(3px)'; e.currentTarget.style.opacity = 0.7; }}
+                onClick={(e) => { if (e.target.type !== 'checkbox') setDetailStudent(s); }}>
+                {isAdmin && (
+                  <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} onClick={e => e.stopPropagation()} />
+                )}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}><span style={{ color: 'var(--gray)', fontWeight: 500, fontSize: 12 }}>#{s.roll_no}</span> {s.name}</div>
+                </div>
+                <span style={{ color: 'var(--gray)' }}>›</span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {showAdd && (
@@ -135,8 +167,22 @@ export default function StudentsTab() {
           academyId={academyId}
           sports={visibleSports}
           batches={visibleBatches}
+          existingStudents={visibleStudents}
           onClose={() => setShowAdd(false)}
           onSaved={() => { setShowAdd(false); refresh(); }}
+        />
+      )}
+
+      {showBulkEdit && (
+        <BulkEditStudentsModal
+          students={visibleStudents}
+          selectedIds={selected}
+          allStudents={visibleStudents}
+          sports={visibleSports}
+          batches={visibleBatches}
+          academyId={academyId}
+          onClose={() => setShowBulkEdit(false)}
+          onSaved={() => { setShowBulkEdit(false); setSelected(new Set()); refresh(); }}
         />
       )}
 
@@ -169,6 +215,7 @@ export default function StudentsTab() {
           sports={visibleSports}
           batches={visibleBatches}
           student={editStudent}
+          existingStudents={visibleStudents}
           onClose={() => setEditStudent(null)}
           onSaved={() => { setEditStudent(null); refresh(); }}
         />
