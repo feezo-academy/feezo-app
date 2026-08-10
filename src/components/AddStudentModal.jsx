@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { buildBatchKey } from '../lib/batchKey';
+import { generateRollNumber } from '../lib/rollNumber';
+import { normalizePhone, isValidPhone } from '../lib/phone';
 import AchievementPicker from './AchievementPicker';
 import AchievementsSection from './AchievementsSection';
 
@@ -39,7 +41,7 @@ function SectionLabel({ children }) {
 }
 
 // Pass `student` to edit an existing row instead of creating a new one.
-export default function AddStudentModal({ academyId, sports, batches, student, onClose, onSaved }) {
+export default function AddStudentModal({ academyId, sports, batches, student, existingStudents = [], onClose, onSaved }) {
   const isEdit = !!student;
   const [form, setForm] = useState(() => isEdit ? {
     roll_no: student.roll_no || '', name: student.name || '', dob: student.dob || '',
@@ -53,13 +55,31 @@ export default function AddStudentModal({ academyId, sports, batches, student, o
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [pendingAchievements, setPendingAchievements] = useState([]); // add-mode only, staged until student is saved
+  const rollNoTouched = useRef(isEdit); // once user hand-edits roll_no, stop auto-filling it
 
   const age = calcAge(form.dob);
   const batchOptions = batches.filter(b => b.sport === form.sport);
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
+  // Auto-fill roll number as (Sport initial)(Batch initial) + next 2-digit sequence,
+  // e.g. Silambam + Morning Batch -> SM01. Stops once the user types a custom roll no.
+  useEffect(() => {
+    if (isEdit || rollNoTouched.current) return;
+    if (!form.sport || !form.batchLabel) return;
+    const existingRolls = existingStudents.map(s => s.roll_no).filter(Boolean);
+    const auto = generateRollNumber(form.sport, form.batchLabel, existingRolls);
+    setForm(f => ({ ...f, roll_no: auto }));
+  }, [form.sport, form.batchLabel, isEdit, existingStudents]);
+
+  const onRollNoChange = (e) => {
+    rollNoTouched.current = true;
+    setForm(f => ({ ...f, roll_no: e.target.value }));
+  };
+
   const save = async () => {
     if (!form.name || !form.contact) { setError('Full name and Contact Number 1 are required.'); return; }
+    if (!isValidPhone(form.contact)) { setError('Contact Number 1 must be a 10-digit number (no +91 needed).'); return; }
+    if (form.contact2 && !isValidPhone(form.contact2)) { setError('Contact Number 2 must be a 10-digit number (no +91 needed).'); return; }
     setSaving(true);
     setError('');
     const payload = {
@@ -68,8 +88,8 @@ export default function AddStudentModal({ academyId, sports, batches, student, o
       dob: form.dob || null,
       age: age ? String(age) : null,
       parent: form.parent || null,
-      contact: form.contact,
-      contact2: form.contact2 || null,
+      contact: normalizePhone(form.contact),
+      contact2: form.contact2 ? normalizePhone(form.contact2) : null,
       address: form.address || null,
       join_date: form.join_date || null,
       batch: buildBatchKey(form.sport, form.batchLabel),
@@ -121,7 +141,7 @@ export default function AddStudentModal({ academyId, sports, batches, student, o
             <SectionLabel>Basic Details</SectionLabel>
             <div style={{ ...gridStyle, marginTop: 6 }}>
               <Field label="Roll Number">
-                <input className="form-input" placeholder="Auto-assigned" value={form.roll_no} onChange={set('roll_no')} />
+                <input className="form-input" placeholder="Auto-assigned" value={form.roll_no} onChange={onRollNoChange} />
               </Field>
               <Field label="Full Name" required>
                 <input className="form-input" placeholder="Student full name" value={form.name} onChange={set('name')} />
@@ -155,10 +175,12 @@ export default function AddStudentModal({ academyId, sports, batches, student, o
             <SectionLabel>Contact</SectionLabel>
             <div style={{ ...gridStyle, marginTop: 6 }}>
               <Field label="Contact Number 1" required>
-                <input className="form-input" placeholder="Primary mobile" value={form.contact} onChange={set('contact')} />
+                <input className="form-input" placeholder="10-digit mobile number" value={form.contact}
+                  maxLength={10} onChange={e => setForm(f => ({ ...f, contact: normalizePhone(e.target.value).slice(0, 10) }))} />
               </Field>
               <Field label="Contact Number 2">
-                <input className="form-input" placeholder="Secondary (optional)" value={form.contact2} onChange={set('contact2')} />
+                <input className="form-input" placeholder="10-digit (optional)" value={form.contact2}
+                  maxLength={10} onChange={e => setForm(f => ({ ...f, contact2: normalizePhone(e.target.value).slice(0, 10) }))} />
               </Field>
             </div>
           </div>
