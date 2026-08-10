@@ -3,6 +3,8 @@ import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import AddStudentModal from '../components/AddStudentModal';
+import StudentDetailModal from '../components/StudentDetailModal';
+import ImportStudentsModal from '../components/ImportStudentsModal';
 import { exportStudentsPdf, exportStudentsXlsx } from '../lib/exporters';
 
 export default function StudentsTab() {
@@ -14,6 +16,9 @@ export default function StudentsTab() {
   const [sortBy, setSortBy] = useState('roll_asc');
   const [selected, setSelected] = useState(new Set());
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [detailStudent, setDetailStudent] = useState(null);
+  const [editStudent, setEditStudent] = useState(null);
 
   const filtered = useMemo(() => {
     let list = visibleStudents.filter(s => {
@@ -66,6 +71,7 @@ export default function StudentsTab() {
         <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button className="btn btn-gold btn-sm" onClick={() => exportStudentsPdf(filtered)}>PDF</button>
           <button className="btn btn-success btn-sm" onClick={() => exportStudentsXlsx(filtered)}>XL</button>
+          {isAdmin && <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>}
           {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Add</button>}
         </div>
       </div>
@@ -109,14 +115,17 @@ export default function StudentsTab() {
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90, marginTop: 4 }}>
         {filtered.length === 0 && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 30 }}>No students found.</div>}
         {filtered.map(s => (
-          <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
+          <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8, cursor: 'pointer' }}
+            onClick={(e) => { if (e.target.type !== 'checkbox') setDetailStudent(s); }}>
             {isAdmin && (
-              <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} />
+              <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} onClick={e => e.stopPropagation()} />
             )}
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name} <span style={{ color: 'var(--gray)', fontWeight: 500, fontSize: 12 }}>#{s.roll_no}</span></div>
               <div style={{ fontSize: 12, color: 'var(--gray)' }}>{s.sport} · {s.batchLabel}</div>
+              {s.contact && <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>📞 {s.contact}</div>}
             </div>
+            <span style={{ color: 'var(--gray)' }}>›</span>
           </div>
         ))}
       </div>
@@ -130,6 +139,38 @@ export default function StudentsTab() {
           onSaved={() => { setShowAdd(false); refresh(); }}
         />
       )}
+
+      {showImport && (
+        <ImportStudentsModal
+          academyId={academyId}
+          sports={visibleSports}
+          batches={visibleBatches}
+          existingStudents={visibleStudents}
+          onClose={() => setShowImport(false)}
+          onImported={refresh}
+        />
+      )}
+
+      {detailStudent && (
+        <StudentDetailModal
+          student={detailStudent}
+          academyId={academyId}
+          onClose={() => setDetailStudent(null)}
+          onEdit={(s) => setEditStudent(s)}
+          onChanged={refresh}
+        />
+      )}
+
+      {editStudent && (
+        <AddStudentModal
+          academyId={academyId}
+          sports={visibleSports}
+          batches={visibleBatches}
+          student={editStudent}
+          onClose={() => setEditStudent(null)}
+          onSaved={() => { setEditStudent(null); refresh(); }}
+        />
+      )}
     </div>
   );
-          }
+}
