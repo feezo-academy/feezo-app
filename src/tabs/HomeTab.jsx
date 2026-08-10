@@ -78,12 +78,11 @@ export default function HomeTab() {
     const present = dayRows.filter(a => a.status === 'present').length;
     const absent = dayRows.filter(a => a.status === 'absent').length;
     const strength = students.filter(s => {
-      if (!s.join_date || s.join_date > dateStr) return false;
+      if (s.join_date && s.join_date > dateStr) return false; // only exclude if they join in the future
       if (s.banned && (!s.banned_on || s.banned_on.slice(0, 10) <= dateStr)) return false;
       return true;
     }).length;
     const dropped = students.filter(s => {
-      if (!s.join_date || s.join_date > dateStr) return false;
       return s.banned && s.banned_on && s.banned_on.slice(0, 10) <= dateStr;
     }).length;
     return { day, dateStr, present, absent, strength, dropped };
