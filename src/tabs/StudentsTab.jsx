@@ -155,6 +155,7 @@ export default function StudentsTab() {
         <StudentDetailModal
           student={detailStudent}
           academyId={academyId}
+          isAdmin={isAdmin}
           onClose={() => setDetailStudent(null)}
           onEdit={(s) => setEditStudent(s)}
           onChanged={refresh}
