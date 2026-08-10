@@ -56,10 +56,12 @@ export function AuthProvider({ children }) {
   const isAdmin = roles.includes('admin');
   const assignedSports = appUser?.assigned_sports || [];
   const assignedBatches = appUser?.assigned_batches || [];
+  // Admins always see contact info; staff need the toggle explicitly granted in Staff Users.
+  const canViewContact = isAdmin || !!appUser?.can_view_contact;
 
   const value = {
     user, appUser, academyId, loading,
-    isAdmin, assignedSports, assignedBatches,
+    isAdmin, assignedSports, assignedBatches, canViewContact,
     login, logout, refreshAppUser: () => loadAppUser(user),
   };
 
