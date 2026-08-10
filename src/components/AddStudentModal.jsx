@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { buildBatchKey } from '../lib/batchKey';
+import AchievementPicker from './AchievementPicker';
+import AchievementsSection from './AchievementsSection';
 
 function calcAge(dobIso) {
   if (!dobIso) return '';
@@ -50,6 +52,7 @@ export default function AddStudentModal({ academyId, sports, batches, student, o
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [pendingAchievements, setPendingAchievements] = useState([]); // add-mode only, staged until student is saved
 
   const age = calcAge(form.dob);
   const batchOptions = batches.filter(b => b.sport === form.sport);
@@ -71,11 +74,16 @@ export default function AddStudentModal({ academyId, sports, batches, student, o
       join_date: form.join_date || null,
       batch: buildBatchKey(form.sport, form.batchLabel),
     };
-    const { error: err } = isEdit
-      ? await supabase.from('students').update(payload).eq('id', student.id)
-      : await supabase.from('students').insert({ ...payload, academy_id: academyId });
+    const { data: savedRow, error: err } = isEdit
+      ? await supabase.from('students').update(payload).eq('id', student.id).select().single()
+      : await supabase.from('students').insert({ ...payload, academy_id: academyId }).select().single();
     setSaving(false);
     if (err) { setError(err.message); return; }
+
+    if (!isEdit && pendingAchievements.length > 0 && savedRow) {
+      const rows = pendingAchievements.map(({ _tmpId, ...a }) => ({ ...a, student_id: savedRow.id, academy_id: academyId }));
+      await supabase.from('achievements').insert(rows);
+    }
     onSaved();
   };
 
@@ -177,6 +185,12 @@ export default function AddStudentModal({ academyId, sports, batches, student, o
                 </select>
               </Field>
             </div>
+          </div>
+
+          <div>
+            {isEdit
+              ? <AchievementsSection studentId={student.id} academyId={academyId} canEdit={true} />
+              : <AchievementPicker items={pendingAchievements} setItems={setPendingAchievements} />}
           </div>
         </div>
 
