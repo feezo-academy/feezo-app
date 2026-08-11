@@ -50,6 +50,7 @@ export default function AttendanceTab() {
   const [showImport, setShowImport] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const lastScrollTop = useRef(0);
+  const listScrollRef = useRef(null);
 
   const dateObj = new Date(date + 'T00:00:00');
   const year = dateObj.getFullYear();
@@ -124,18 +125,20 @@ export default function AttendanceTab() {
     })();
   }, [academyId, date, viewMode, year, month, reloadKey]);
 
-  // Changing an *existing* mark (P→A or A→P) needs confirmation. Setting a
-  // fresh mark or clearing one (tapping the same button again) does not.
+  // Changing an *existing* mark (P→A or A→P) needs confirmation, since it's an
+  // edit after the fact. Tapping the *same* button again is a no-op — students
+  // get bumped/mis-tapped often, so a mark should never disappear just from a
+  // second tap. The only way to clear a mark is switching to the other status.
   const setStatus = (student, status) => {
     const prev = records[student.id];
-    if (prev && prev !== status) {
+    if (prev === status) return; // already marked this — do nothing, don't unmark
+    if (prev) {
       const label = (v) => (v === 'P' ? 'Present' : 'Absent');
       const ok = window.confirm(`Change ${student.name}'s attendance from ${label(prev)} to ${label(status)}?`);
       if (!ok) return;
     }
-    const next = prev === status ? undefined : status; // tapping the same button again clears the mark
-    setRecords(p => ({ ...p, [student.id]: next }));
-    persistStatus(student, next);
+    setRecords(p => ({ ...p, [student.id]: status }));
+    persistStatus(student, status);
   };
 
   // Writes a single student's mark straight to Supabase so nothing depends on
@@ -241,6 +244,11 @@ export default function AttendanceTab() {
     lastScrollTop.current = top;
   };
 
+  const scrollToBottom = () => {
+    const el = listScrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  };
+
   const DateArrowGroup = ({ onPrev, onNext, children }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: '1 1 30%', minWidth: 92 }}>
       <button className="arrow-btn" style={{ width: 24, height: 24, fontSize: 12 }} onClick={onPrev}>‹</button>
@@ -250,7 +258,7 @@ export default function AttendanceTab() {
   );
 
   return (
-    <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>🗓️ Attendance</div>
         <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -367,7 +375,7 @@ export default function AttendanceTab() {
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 24 }} onScroll={handleScroll}>
+      <div ref={listScrollRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 24 }} onScroll={handleScroll}>
         {loading && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 20 }}>Loading…</div>}
         {!loading && students.length === 0 && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 30 }}>No students found.</div>}
 
@@ -432,6 +440,21 @@ export default function AttendanceTab() {
           </button>
         )}
       </div>
+
+      {viewMode === 'day' && students.length > 6 && (
+        <button
+          onClick={scrollToBottom}
+          aria-label="Scroll to bottom"
+          title="Scroll to bottom"
+          style={{
+            position: 'absolute', right: 14, bottom: 14, zIndex: 20,
+            width: 40, height: 40, borderRadius: '50%', border: 'none',
+            background: 'var(--accent2)', color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, boxShadow: '0 4px 12px rgba(0,0,0,.25)', cursor: 'pointer',
+          }}
+        >▼</button>
+      )}
 
       {showImport && (
         <ImportAttendanceModal
