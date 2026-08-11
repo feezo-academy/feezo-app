@@ -131,36 +131,68 @@ export default function AttendanceTab() {
       const ok = window.confirm(`Change ${student.name}'s attendance from ${label(prev)} to ${label(status)}?`);
       if (!ok) return;
     }
-    setRecords(p => ({ ...p, [student.id]: p[student.id] === status ? undefined : status }));
+    const next = prev === status ? undefined : status; // tapping the same button again clears the mark
+    setRecords(p => ({ ...p, [student.id]: next }));
+    persistStatus(student, next);
+  };
+
+  // Writes a single student's mark straight to Supabase so nothing depends on
+  // a separate "Save" step — clearing a mark (next === undefined) removes the row.
+  const persistStatus = async (student, status) => {
+    try {
+      if (status) {
+        const { error } = await supabase.from('attendance').upsert(
+          { academy_id: academyId, student_id: student.id, date, status, sport: student.sport },
+          { onConflict: 'academy_id,student_id,date' }
+        );
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('attendance').delete()
+          .eq('academy_id', academyId).eq('student_id', student.id).eq('date', date);
+        if (error) throw error;
+      }
+    } catch (err) {
+      window.alert(`Couldn't save ${student.name}'s attendance: ${err.message}`);
+    }
   };
 
   const allPChecked = students.length > 0 && students.every(s => records[s.id] === 'present');
   const allAChecked = students.length > 0 && students.every(s => records[s.id] === 'absent');
-  const markAll = (status) => {
+  const markAll = async (status) => {
+    const alreadyAll = students.every(s => records[s.id] === status);
+    const nextStatus = alreadyAll ? undefined : status;
     setRecords(prev => {
       const next = { ...prev };
-      const alreadyAll = students.every(s => prev[s.id] === status);
-      students.forEach(s => { next[s.id] = alreadyAll ? undefined : status; });
+      students.forEach(s => { next[s.id] = nextStatus; });
       return next;
     });
+    if (nextStatus) {
+      const rows = students.map(s => ({ academy_id: academyId, student_id: s.id, date, status: nextStatus, sport: s.sport }));
+      const { error } = await supabase.from('attendance').upsert(rows, { onConflict: 'academy_id,student_id,date' });
+      if (error) window.alert(`Couldn't save attendance: ${error.message}`);
+    } else {
+      const ids = students.map(s => s.id);
+      const { error } = await supabase.from('attendance').delete()
+        .eq('academy_id', academyId).eq('date', date).in('student_id', ids);
+      if (error) window.alert(`Couldn't clear attendance: ${error.message}`);
+    }
   };
 
   const markAllDone = async () => {
     if (!students.length || dayCompleted) return;
-    const ok = window.confirm('Mark attendance as completed for the day? This saves all current marks and locks today in as done.');
+    const ok = window.confirm('Mark attendance as completed for the day? This locks today in as done.');
     if (!ok) return;
     setCompleting(true);
-    const rows = students
-      .filter(s => records[s.id] === 'present' || records[s.id] === 'absent')
-      .map(s => ({ academy_id: academyId, student_id: s.id, date, status: records[s.id], sport: s.sport }));
-    if (rows.length) await supabase.from('attendance').upsert(rows, { onConflict: 'academy_id,student_id,date' });
     try {
-      await supabase.from('attendance_day_status').upsert(
+      const { error } = await supabase.from('attendance_day_status').upsert(
         { academy_id: academyId, date, completed: true, completed_at: new Date().toISOString() },
         { onConflict: 'academy_id,date' }
       );
-    } catch {
-      // Table not set up yet — completion still reflects locally for this session.
+      if (error) throw error;
+    } catch (err) {
+      window.alert(`Couldn't mark the day complete — you may need to create the attendance_day_status table. (${err.message})`);
+      setCompleting(false);
+      return;
     }
     setDayCompleted(true);
     setCompleting(false);
