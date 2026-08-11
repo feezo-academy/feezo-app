@@ -41,7 +41,7 @@ export default function AttendanceTab() {
   const [sportFilter, setSportFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [sortBy, setSortBy] = useState('roll_asc');
-  const [records, setRecords] = useState({}); // student_id -> 'present' | 'absent'  (day mode only)
+  const [records, setRecords] = useState({}); // student_id -> 'P' | 'A'  (day mode only, matches db status codes)
   const [periodRows, setPeriodRows] = useState({}); // student_id -> { present, absent }  (month/year mode)
   const [dayCompleted, setDayCompleted] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -113,8 +113,8 @@ export default function AttendanceTab() {
         const agg = {};
         (data || []).forEach(r => {
           if (!agg[r.student_id]) agg[r.student_id] = { present: 0, absent: 0 };
-          if (r.status === 'present') agg[r.student_id].present++;
-          else if (r.status === 'absent') agg[r.student_id].absent++;
+          if (r.status === 'P') agg[r.student_id].present++;
+          else if (r.status === 'A') agg[r.student_id].absent++;
         });
         setPeriodRows(agg);
       }
@@ -127,7 +127,7 @@ export default function AttendanceTab() {
   const setStatus = (student, status) => {
     const prev = records[student.id];
     if (prev && prev !== status) {
-      const label = (v) => (v === 'present' ? 'Present' : 'Absent');
+      const label = (v) => (v === 'P' ? 'Present' : 'Absent');
       const ok = window.confirm(`Change ${student.name}'s attendance from ${label(prev)} to ${label(status)}?`);
       if (!ok) return;
     }
@@ -156,8 +156,8 @@ export default function AttendanceTab() {
     }
   };
 
-  const allPChecked = students.length > 0 && students.every(s => records[s.id] === 'present');
-  const allAChecked = students.length > 0 && students.every(s => records[s.id] === 'absent');
+  const allPChecked = students.length > 0 && students.every(s => records[s.id] === 'P');
+  const allAChecked = students.length > 0 && students.every(s => records[s.id] === 'A');
   const markAll = async (status) => {
     const alreadyAll = students.every(s => records[s.id] === status);
     const nextStatus = alreadyAll ? undefined : status;
@@ -199,8 +199,8 @@ export default function AttendanceTab() {
     setReloadKey(k => k + 1);
   };
 
-  const presentCount = students.filter(s => records[s.id] === 'present').length;
-  const absentCount = students.filter(s => records[s.id] === 'absent').length;
+  const presentCount = students.filter(s => records[s.id] === 'P').length;
+  const absentCount = students.filter(s => records[s.id] === 'A').length;
   const notMarkedCount = students.length - presentCount - absentCount;
 
   const dateLabel = `${day} ${WEEKDAYS[dateObj.getDay()]}, ${MONTHS[month]} ${year}`;
@@ -210,7 +210,7 @@ export default function AttendanceTab() {
     if (viewMode === 'day') {
       const columns = ['Roll No', 'Name', 'Sport', 'Batch', 'Status'];
       const rows = students.map(s => [s.roll_no, s.name, s.sport, s.batchLabel,
-        records[s.id] ? records[s.id][0].toUpperCase() + records[s.id].slice(1) : 'Not Marked']);
+        records[s.id] === 'P' ? 'Present' : records[s.id] === 'A' ? 'Absent' : 'Not Marked']);
       const title = `Attendance — ${dateLabel}`;
       const fname = `attendance_${date}`;
       if (kind === 'pdf') exportAttendancePdf(title, columns, rows, `${fname}.pdf`); else exportAttendanceXlsx(columns, rows, `${fname}.xlsx`);
@@ -351,10 +351,10 @@ export default function AttendanceTab() {
             </div>
             <div style={{ display: 'flex', gap: 12, fontWeight: 600 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-                <input type="checkbox" checked={allPChecked} onChange={() => markAll('present')} /> All P
+                <input type="checkbox" checked={allPChecked} onChange={() => markAll('P')} /> All P
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-                <input type="checkbox" checked={allAChecked} onChange={() => markAll('absent')} /> All A
+                <input type="checkbox" checked={allAChecked} onChange={() => markAll('A')} /> All A
               </label>
             </div>
           </div>
@@ -371,7 +371,7 @@ export default function AttendanceTab() {
 
         {!loading && viewMode === 'day' && students.map(s => {
           const status = records[s.id];
-          const isYellowPresent = dayCompleted && status === 'present';
+          const isYellowPresent = dayCompleted && status === 'P';
           return (
             <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
               <RollBadge rollNo={s.roll_no} />
@@ -383,11 +383,11 @@ export default function AttendanceTab() {
               </div>
               <div className="att-btns">
                 <button
-                  className={'att-btn ' + (status === 'present' ? 'present' : 'inactive')}
+                  className={'att-btn ' + (status === 'P' ? 'present' : 'inactive')}
                   style={isYellowPresent ? { background: '#eab308', color: '#1a1a1a' } : undefined}
-                  onClick={() => setStatus(s, 'present')}
+                  onClick={() => setStatus(s, 'P')}
                 >P</button>
-                <button className={'att-btn ' + (status === 'absent' ? 'absent' : 'inactive')} onClick={() => setStatus(s, 'absent')}>A</button>
+                <button className={'att-btn ' + (status === 'A' ? 'absent' : 'inactive')} onClick={() => setStatus(s, 'A')}>A</button>
               </div>
             </div>
           );
