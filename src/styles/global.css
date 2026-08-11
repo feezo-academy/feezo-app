@@ -229,6 +229,7 @@ tr:hover td{background:var(--card2);}
 .att-btn.present{background:#16a34a;color:#fff;}
 .att-btn.present.late{background:#f97316;color:#fff;}
 .att-btn.absent{background:#dc2626;color:#fff;}
+.att-btn.edited{background:#b45309;color:#fff;box-shadow:0 0 0 2px #b4530933;}
 .att-btn.cleared{background:#475569;color:#fff;}
 .att-btn.inactive{background:var(--royal2);color:var(--gray);border:1px solid var(--border);}
 /* Full-screen chart pages */
