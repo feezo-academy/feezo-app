@@ -42,6 +42,7 @@ export default function AttendanceTab() {
   const [batchFilter, setBatchFilter] = useState('');
   const [sortBy, setSortBy] = useState('roll_asc');
   const [records, setRecords] = useState({}); // student_id -> 'P' | 'A'  (day mode only, matches db status codes)
+  const [completedSnapshot, setCompletedSnapshot] = useState({}); // records as they stood at the last fetch — used to detect edits made after the day was locked
   const [periodRows, setPeriodRows] = useState({}); // student_id -> { present, absent }  (month/year mode)
   const [dayCompleted, setDayCompleted] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -96,6 +97,7 @@ export default function AttendanceTab() {
         const map = {};
         (data || []).forEach(r => { map[r.student_id] = r.status; });
         setRecords(map);
+        setCompletedSnapshot(map); // baseline as-of this fetch, so later in-session changes can be detected as edits
 
         // Optional table — if it hasn't been created yet in Supabase, fail quietly.
         try {
@@ -347,7 +349,7 @@ export default function AttendanceTab() {
               <span>✅ <strong>{presentCount}</strong></span>
               <span>❌ <strong>{absentCount}</strong></span>
               <span style={{ color: 'var(--gray)' }}>⏳ <strong>{notMarkedCount}</strong></span>
-              {dayCompleted && <span style={{ color: '#eab308', fontWeight: 700 }}>✔ Completed</span>}
+              {dayCompleted && <span style={{ color: '#15803d', fontWeight: 700 }}>✔ Completed</span>}
             </div>
             <div style={{ display: 'flex', gap: 12, fontWeight: 600 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
@@ -371,7 +373,10 @@ export default function AttendanceTab() {
 
         {!loading && viewMode === 'day' && students.map(s => {
           const status = records[s.id];
-          const isYellowPresent = dayCompleted && status === 'P';
+          // Only flag as "edited" when the day is already locked AND this student's
+          // mark differs from what it was at load time — a fresh mark or an
+          // untouched mark from before completion stays green/red.
+          const isEdited = dayCompleted && status !== undefined && status !== completedSnapshot[s.id];
           return (
             <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
               <RollBadge rollNo={s.roll_no} />
@@ -383,11 +388,13 @@ export default function AttendanceTab() {
               </div>
               <div className="att-btns">
                 <button
-                  className={'att-btn ' + (status === 'P' ? 'present' : 'inactive')}
-                  style={isYellowPresent ? { background: '#eab308', color: '#1a1a1a' } : undefined}
+                  className={'att-btn ' + (status === 'P' ? (isEdited ? 'edited' : 'present') : 'inactive')}
                   onClick={() => setStatus(s, 'P')}
                 >P</button>
-                <button className={'att-btn ' + (status === 'A' ? 'absent' : 'inactive')} onClick={() => setStatus(s, 'A')}>A</button>
+                <button
+                  className={'att-btn ' + (status === 'A' ? (isEdited ? 'edited' : 'absent') : 'inactive')}
+                  onClick={() => setStatus(s, 'A')}
+                >A</button>
               </div>
             </div>
           );
@@ -417,7 +424,7 @@ export default function AttendanceTab() {
         {!loading && isAdmin && viewMode === 'day' && students.length > 0 && (
           <button
             className="btn btn-primary"
-            style={{ width: '100%', marginTop: 4, background: dayCompleted ? '#eab308' : undefined, color: dayCompleted ? '#1a1a1a' : undefined }}
+            style={{ width: '100%', marginTop: 4, background: dayCompleted ? '#15803d' : undefined, color: dayCompleted ? '#fff' : undefined }}
             onClick={markAllDone}
             disabled={completing || dayCompleted}
           >
