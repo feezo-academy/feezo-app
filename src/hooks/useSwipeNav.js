@@ -22,7 +22,7 @@ function isInsideHScroll(el, root) {
 export default function useSwipeNav(viewportRef) {
   const navigate = useNavigate();
   const location = useLocation();
-  const touch = useRef({ startX: 0, startY: 0, startTime: 0, tracking: false });
+  const touch = useRef({ startX: 0, startY: 0, startTime: 0, tracking: false, claimed: false });
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -37,6 +37,20 @@ export default function useSwipeNav(viewportRef) {
       touch.current.startY = e.touches[0].clientY;
       touch.current.startTime = Date.now();
       touch.current.tracking = true;
+      touch.current.claimed = false;
+    };
+
+    // Once a drag is clearly horizontal, take over the gesture so the browser
+    // doesn't also interpret it as an overscroll/pull-to-refresh (which was
+    // showing its own reload spinner over the header mid-swipe).
+    const onTouchMove = (e) => {
+      if (!touch.current.tracking || e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - touch.current.startX;
+      const dy = e.touches[0].clientY - touch.current.startY;
+      if (!touch.current.claimed && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        touch.current.claimed = true;
+      }
+      if (touch.current.claimed) e.preventDefault();
     };
 
     const onTouchEnd = (e) => {
@@ -58,9 +72,13 @@ export default function useSwipeNav(viewportRef) {
     };
 
     viewport.addEventListener('touchstart', onTouchStart, { passive: true });
+    // Must be non-passive so we can call preventDefault() once a horizontal
+    // swipe is confirmed, to stop the browser's own pull-to-refresh gesture.
+    viewport.addEventListener('touchmove', onTouchMove, { passive: false });
     viewport.addEventListener('touchend', onTouchEnd, { passive: true });
     return () => {
       viewport.removeEventListener('touchstart', onTouchStart);
+      viewport.removeEventListener('touchmove', onTouchMove);
       viewport.removeEventListener('touchend', onTouchEnd);
     };
   }, [viewportRef, navigate, location.pathname]);
