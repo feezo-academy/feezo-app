@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 // Same tab order as BottomNav.jsx.
-const SWIPE_TABS = ['/home', '/students', '/attendance', '/fees', '/enquiry', '/profile'];
+export const SWIPE_TABS = ['/home', '/students', '/attendance', '/fees', '/enquiry', '/profile'];
 
 function isInsideHScroll(el, root) {
   while (el && el !== root) {
