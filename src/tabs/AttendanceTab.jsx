@@ -455,7 +455,7 @@ export default function AttendanceTab() {
   const yearHasData = Object.values(yearSummary).some(r => (r?.days?.size || 0) > 0);
 
   return (
-    <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+    <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>🗓️ Attendance</div>
         <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -592,7 +592,7 @@ export default function AttendanceTab() {
         </div>
       )}
 
-      <div ref={listScrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 90 }} onScroll={handleScroll}>
+      <div ref={listScrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 90, marginTop: 4 }} onScroll={handleScroll}>
         {loading && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 20 }}>Loading…</div>}
 
         {!loading && viewMode === 'day' && isFutureDate && (
