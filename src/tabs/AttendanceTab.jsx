@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import { exportAttendancePdf, exportAttendanceXlsx } from '../lib/exporters';
+import { exportGenericPdf, exportGenericXlsx } from '../lib/exporters';
 import ImportAttendanceModal from '../components/ImportAttendanceModal';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -31,12 +31,10 @@ function RollBadge({ rollNo }) {
 
 export default function AttendanceTab() {
   const { visibleStudents, visibleSports, visibleBatches, refresh } = useAcademyData();
-  // NOTE: `user` is read defensively below (user?.id / user?.role) for the audit
-  // log — adjust the field names here if your AuthContext shapes it differently.
-  const { isAdmin, academyId, user } = useAuth();
-  // Matches the `marked_by` text column in Supabase (e.g. "Jp", "Oviya", "Admin")
-  // — adjust the field names here if your AuthContext shapes the user differently.
-  const markedBy = user?.name || user?.username || user?.email || (isAdmin ? 'Admin' : 'Staff');
+  const { isAdmin, academyId, user, appUser } = useAuth();
+  // Matches the `marked_by` text column in Supabase — real name lives on
+  // appUser (the app_users row), not the raw Supabase auth `user`.
+  const markedBy = appUser?.name || user?.email || (isAdmin ? 'Admin' : 'Staff');
 
   const [date, setDate] = useState(todayStr());
   const [viewMode, setViewMode] = useState('day'); // 'day' | 'month' | 'year'
@@ -133,16 +131,17 @@ export default function AttendanceTab() {
     return Object.keys(records).some(sid => ids.has(sid) && (records[sid] === 'P' || records[sid] === 'A'));
   }, [records, visibleStudents, sportFilter]);
 
-  // Best-effort activity log — mirrors the HTML app's addLog()/audit_log table.
-  // Never blocks the UI if the table/columns don't exist or the insert fails.
-  const logAttendance = async (action, detail) => {
+  // Best-effort activity log, matching the columns admin/ActivityPage.jsx
+  // actually reads (actor_name, then action || description). Written to both
+  // action and description so it shows up regardless of which one it prefers.
+  // Never blocks the UI if the insert fails.
+  const logAttendance = async (message) => {
     try {
       await supabase.from('audit_log').insert({
         academy_id: academyId,
-        user_id: user?.id || '',
-        role: user?.role || (isAdmin ? 'admin' : 'staff'),
-        action,
-        detail,
+        actor_name: markedBy,
+        action: message,
+        description: message,
       });
     } catch { /* audit log is best-effort */ }
   };
@@ -229,7 +228,7 @@ export default function AttendanceTab() {
         const ok = window.confirm(`Change ${student.name} from Latecomer → Absent (${sp}) on ${date}?`);
         if (!ok) return;
         applyStatus(student, 'A', false);
-        logAttendance('attendance', `${student.name} → Absent from latecomer (${sp}) on ${date}`);
+        logAttendance(`${student.name} → Absent from latecomer (${sp}) on ${date}`);
         return;
       }
       if (existing === 'P' && isLate && status === 'P') return; // already marked, no-op
@@ -238,13 +237,13 @@ export default function AttendanceTab() {
         const ok = window.confirm(`Mark ${student.name} as Absent (${sp}) on ${date}?`);
         if (!ok) return;
         applyStatus(student, 'A', false);
-        logAttendance('attendance', `${student.name} → Absent (${sp}) on ${date} [register closed]`);
+        logAttendance(`${student.name} → Absent (${sp}) on ${date} [register closed]`);
         return;
       }
       const ok = window.confirm(`Register is closed. Mark ${student.name} as a latecomer (Present)?`);
       if (!ok) return;
       applyStatus(student, 'P', true);
-      logAttendance('attendance', `${student.name} → latecomer Present (${sp}) on ${date}`);
+      logAttendance(`${student.name} → latecomer Present (${sp}) on ${date}`);
       return;
     }
 
@@ -256,7 +255,7 @@ export default function AttendanceTab() {
       if (!ok) return;
     }
     applyStatus(student, status, false);
-    logAttendance('attendance', `${student.name} → ${status === 'P' ? 'Present' : 'Absent'} (${sp}) on ${date}`);
+    logAttendance(`${student.name} → ${status === 'P' ? 'Present' : 'Absent'} (${sp}) on ${date}`);
   };
 
   const applyStatus = (student, status, isLate) => {
@@ -316,7 +315,7 @@ export default function AttendanceTab() {
         ({ error } = await supabase.from('attendance').upsert(makeRows(), { onConflict: 'academy_id,student_id,date' }));
       }
       if (error) { window.alert(`Couldn't save attendance: ${error.message}`); return; }
-      logAttendance('attendance', `All ${sportFilter} students → ${label} on ${date}`);
+      logAttendance(`All ${sportFilter} students → ${label} on ${date}`);
     } else {
       const ok = window.confirm(`Remove ${label} mark for all ${sportFilter} students on ${date}?`);
       if (!ok) return;
@@ -325,7 +324,7 @@ export default function AttendanceTab() {
       const { error } = await supabase.from('attendance').delete()
         .eq('academy_id', academyId).eq('date', date).in('student_id', clearedIds);
       if (error) { window.alert(`Couldn't clear attendance: ${error.message}`); return; }
-      logAttendance('attendance', `All ${label} cleared for ${sportFilter} on ${date}`);
+      logAttendance(`All ${label} cleared for ${sportFilter} on ${date}`);
     }
   };
 
@@ -360,7 +359,7 @@ export default function AttendanceTab() {
     }
     setDayStatusMap(m => ({ ...m, [sportFilter]: true }));
     setCompleting(false);
-    logAttendance('attendance', `Register closed (${sportFilter}) for ${date}`);
+    logAttendance(`Register closed (${sportFilter}) for ${date}`);
     setReloadKey(k => k + 1);
   };
 
@@ -371,38 +370,47 @@ export default function AttendanceTab() {
   const dateLabel = `${day} ${WEEKDAYS[dateObj.getDay()]}, ${MONTHS[month]} ${year}`;
 
   // ---- Export ----
+  // exportGenericPdf(title, columns, rows[][], filename) and
+  // exportGenericXlsx(rowObjects[], filename, sheetName) — real signatures
+  // from src/lib/exporters.js (xlsx needs objects, not parallel arrays).
   const doExport = (kind) => {
     if (viewMode === 'day') {
       const columns = ['Roll No', 'Name', 'Sport', 'Batch', 'Status'];
-      const rows = students.map(s => [s.roll_no, s.name, s.sport, s.batchLabel,
-        records[s.id] === 'P' ? (lateMap[s.id] ? 'Present (Late)' : 'Present') : records[s.id] === 'A' ? 'Absent' : 'Not Marked']);
+      const rowObjs = students.map(s => ({
+        'Roll No': s.roll_no, Name: s.name, Sport: s.sport, Batch: s.batchLabel,
+        Status: records[s.id] === 'P' ? (lateMap[s.id] ? 'Present (Late)' : 'Present') : records[s.id] === 'A' ? 'Absent' : 'Not Marked',
+      }));
       const title = `Attendance — ${dateLabel}`;
       const fname = `attendance_${date}`;
-      if (kind === 'pdf') exportAttendancePdf(title, columns, rows, `${fname}.pdf`); else exportAttendanceXlsx(columns, rows, `${fname}.xlsx`);
+      if (kind === 'pdf') exportGenericPdf(title, columns, rowObjs.map(Object.values), `${fname}.pdf`);
+      else exportGenericXlsx(rowObjs, `${fname}.xlsx`, 'Attendance');
     } else if (viewMode === 'month') {
       const columns = ['Roll No', 'Name', 'Sport', 'Batch', 'Present', 'Absent', '%'];
-      const rows = students.map(s => {
+      const rowObjs = students.map(s => {
         const agg = periodRows[s.id] || { present: 0, absent: 0 };
         const total = agg.present + agg.absent;
         const pct = total ? Math.round((agg.present / total) * 100) : 0;
-        return [s.roll_no, s.name, s.sport, s.batchLabel, agg.present, agg.absent, `${pct}%`];
+        return { 'Roll No': s.roll_no, Name: s.name, Sport: s.sport, Batch: s.batchLabel, Present: agg.present, Absent: agg.absent, '%': `${pct}%` };
       });
       const title = `Attendance Summary — ${MONTHS[month]} ${year}`;
       const fname = `attendance_${year}-${String(month + 1).padStart(2, '0')}`;
-      if (kind === 'pdf') exportAttendancePdf(title, columns, rows, `${fname}.pdf`); else exportAttendanceXlsx(columns, rows, `${fname}.xlsx`);
+      if (kind === 'pdf') exportGenericPdf(title, columns, rowObjs.map(Object.values), `${fname}.pdf`);
+      else exportGenericXlsx(rowObjs, `${fname}.xlsx`, 'Attendance');
     } else {
       const columns = ['Month', 'Class Days', 'Present', 'Absent'];
-      const rows = MONTHS
+      const rowObjs = MONTHS
         .map((mLabel, i) => {
           const row = yearSummary[i] || { days: new Set(), p: 0, a: 0 };
-          return [mLabel, row.days.size, row.p, row.a];
+          return { Month: mLabel, 'Class Days': row.days.size, Present: row.p, Absent: row.a };
         })
-        .filter((r) => r[1] > 0);
+        .filter(r => r['Class Days'] > 0);
       const title = `Attendance Summary — ${year}`;
       const fname = `attendance_${year}`;
-      if (kind === 'pdf') exportAttendancePdf(title, columns, rows, `${fname}.pdf`); else exportAttendanceXlsx(columns, rows, `${fname}.xlsx`);
+      if (kind === 'pdf') exportGenericPdf(title, columns, rowObjs.map(Object.values), `${fname}.pdf`);
+      else exportGenericXlsx(rowObjs, `${fname}.xlsx`, 'Attendance');
     }
   };
+
 
   // ---- Scroll-driven show/hide of the sport/batch/status/sort row only —
   // the search box, date card, and summary row stay put, matching the HTML app. ----
