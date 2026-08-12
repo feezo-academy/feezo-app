@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { AcademyDataProvider, useAcademyData } from './context/AcademyDataContext';
-import useSwipeNav from './hooks/useSwipeNav';
+import useSwipeNav, { SWIPE_TABS } from './hooks/useSwipeNav';
 import LoginScreen from './pages/LoginScreen';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
@@ -29,6 +29,17 @@ function AppShell() {
   const viewportRef = useRef(null);
   useSwipeNav(viewportRef);
 
+  // Directional slide+fade whenever the active tab changes (swipe or bottom-nav tap).
+  const location = useLocation();
+  const prevIndexRef = useRef(SWIPE_TABS.indexOf(location.pathname));
+  const [animClass, setAnimClass] = useState('');
+  useEffect(() => {
+    const idx = SWIPE_TABS.indexOf(location.pathname);
+    const prevIdx = prevIndexRef.current;
+    setAnimClass(idx !== -1 && prevIdx !== -1 && idx !== prevIdx ? (idx > prevIdx ? 'tab-enter-right' : 'tab-enter-left') : '');
+    prevIndexRef.current = idx;
+  }, [location.pathname]);
+
   return (
     <div id="app" className="active">
       <TopBar
@@ -40,24 +51,26 @@ function AppShell() {
         hasNotif={false}
       />
       <div className="content pages-viewport" ref={viewportRef} style={{ padding: '10px 14px' }}>
-        <Routes>
-          <Route path="/home" element={<HomeTab />} />
-          <Route path="/students" element={<StudentsTab />} />
-          <Route path="/attendance" element={<AttendanceTab />} />
-          <Route path="/fees" element={<FeesTab />} />
-          <Route path="/enquiry" element={<EnquiryTab />} />
-          <Route path="/calendar" element={<CalendarTab />} />
-          <Route path="/calendar/leave" element={<StaffLeavePage />} />
-          <Route path="/profile" element={<ProfileTab />} />
-          <Route path="/admin/sports-batches" element={<SportsBatchesPage />} />
-          <Route path="/admin/users" element={<UsersPage />} />
-          <Route path="/admin/courses" element={<CoursesPage />} />
-          <Route path="/admin/schedules" element={<SchedulesPage />} />
-          <Route path="/admin/performance" element={<PerformancePage />} />
-          <Route path="/admin/activity" element={<ActivityPage />} />
-          <Route path="/admin/leave-count" element={<LeaveCountPage />} />
-          <Route path="*" element={<Navigate to="/home" replace />} />
-        </Routes>
+        <div key={location.pathname} className={animClass}>
+          <Routes>
+            <Route path="/home" element={<HomeTab />} />
+            <Route path="/students" element={<StudentsTab />} />
+            <Route path="/attendance" element={<AttendanceTab />} />
+            <Route path="/fees" element={<FeesTab />} />
+            <Route path="/enquiry" element={<EnquiryTab />} />
+            <Route path="/calendar" element={<CalendarTab />} />
+            <Route path="/calendar/leave" element={<StaffLeavePage />} />
+            <Route path="/profile" element={<ProfileTab />} />
+            <Route path="/admin/sports-batches" element={<SportsBatchesPage />} />
+            <Route path="/admin/users" element={<UsersPage />} />
+            <Route path="/admin/courses" element={<CoursesPage />} />
+            <Route path="/admin/schedules" element={<SchedulesPage />} />
+            <Route path="/admin/performance" element={<PerformancePage />} />
+            <Route path="/admin/activity" element={<ActivityPage />} />
+            <Route path="/admin/leave-count" element={<LeaveCountPage />} />
+            <Route path="*" element={<Navigate to="/home" replace />} />
+          </Routes>
+        </div>
       </div>
       <BottomNav />
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
