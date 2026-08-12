@@ -416,7 +416,7 @@ export default function ClassLogPage() {
               <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>
                 Notes <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span>
               </label>
-              <textarea className="form-input" rows={2} style={{ resize: 'none' }}
+              <textarea className="form-input" rows={7} style={{ resize: 'vertical', minHeight: 130 }}
                 placeholder="e.g. Warm-up, basics, drills…"
                 value={form.note} onChange={(e) => setForm(f => ({ ...f, note: e.target.value }))} />
             </div>
@@ -468,7 +468,7 @@ export default function ClassLogPage() {
 
             <div style={{ marginBottom: 12 }}>
               <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Notes</label>
-              <textarea className="form-input" rows={2} style={{ resize: 'none' }}
+              <textarea className="form-input" rows={7} style={{ resize: 'vertical', minHeight: 130 }}
                 value={editEntry.note || ''} onChange={(e) => setEditEntry(v => ({ ...v, note: e.target.value }))} />
             </div>
 
