@@ -458,10 +458,9 @@ export default function AttendanceTab() {
       </div>
 
       {/* Search box — always visible, never hides on scroll */}
-      <div className="search-wrap" style={{ marginBottom: 5, padding: '5px 9px' }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+      <div className="search-wrap" style={{ marginBottom: 7 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
         <input type="text" className="search-input" placeholder="Search by name or roll number…"
-          style={{ fontSize: 12.5 }}
           value={search} onChange={e => setSearch(e.target.value)} />
         {search && <button type="button" className="search-clear-btn" onClick={() => setSearch('')} aria-label="Clear search">✕</button>}
       </div>
@@ -469,31 +468,31 @@ export default function AttendanceTab() {
       {/* Sport | Batch | Status | Sort row — collapses on scroll-down, reappears on scroll-up */}
       <div style={{
         overflow: 'hidden',
-        maxHeight: filtersVisible ? 48 : 0,
+        maxHeight: filtersVisible ? 60 : 0,
         opacity: filtersVisible ? 1 : 0,
-        marginBottom: filtersVisible ? 5 : 0,
+        marginBottom: filtersVisible ? 7 : 0,
         transition: 'max-height .25s ease, opacity .2s ease, margin-bottom .25s ease',
       }}>
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-          <select className="form-select" style={{ flex: 1, minWidth: 100, fontSize: 11, padding: '5px 7px' }}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
             value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter(''); }}>
             <option value="">All Sports</option>
             {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
-          <select className="form-select" style={{ flex: 1, minWidth: 100, fontSize: 11, padding: '5px 7px' }}
+          <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
             value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
             <option value="">All Batches</option>
             {batchesForSport.map(b => <option key={b.id} value={b.name}>{b.batchLabel}</option>)}
           </select>
           {viewMode === 'day' && (
-            <select className="form-select" style={{ flex: 1, minWidth: 100, fontSize: 11, padding: '5px 7px' }}
+            <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
               value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
               <option value="all">All Status</option>
               <option value="present">Present</option>
               <option value="absent">Absent</option>
             </select>
           )}
-          <select className="form-select" style={{ flex: 1, minWidth: 100, fontSize: 11, padding: '5px 7px' }}
+          <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
             value={sortBy} onChange={e => setSortBy(e.target.value)}>
             <option value="roll_asc">Roll No ↑</option>
             <option value="roll_desc">Roll No ↓</option>
@@ -507,24 +506,24 @@ export default function AttendanceTab() {
       </div>
 
       {/* Date navigator — collapsible via tap, always visible, doesn't hide on scroll */}
-      <div className="card" style={{ padding: 7, marginBottom: 5 }}>
+      <div className="card" style={{ padding: 10, marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
           onClick={() => setPanelOpen(p => !p)}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 700, fontSize: 12 }}>🗓️ {viewMode === 'year' ? year : viewMode === 'month' ? `${MONTHS[month]} ${year}` : dateLabel}</span>
-            <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 7px', borderRadius: 12, background: 'var(--accent2)', color: '#fff', textTransform: 'capitalize' }}>{viewMode}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontWeight: 700, fontSize: 13.5 }}>🗓️ {viewMode === 'year' ? year : viewMode === 'month' ? `${MONTHS[month]} ${year}` : dateLabel}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: 'var(--accent2)', color: '#fff', textTransform: 'capitalize' }}>{viewMode}</span>
           </div>
-          <button className="arrow-btn" style={{ width: 20, height: 20, fontSize: 10 }}
+          <button className="arrow-btn" style={{ width: 24, height: 24, fontSize: 11 }}
             onClick={(e) => { e.stopPropagation(); setPanelOpen(p => !p); }}>
             {panelOpen ? '▲' : '▼'}
           </button>
         </div>
 
         {panelOpen && (
-          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <DateArrowGroup onPrev={() => shiftDay(-1)} onNext={() => shiftDay(1)}>
-                <select className="form-select" style={{ flex: 1, fontSize: 10, padding: '4px 3px' }}
+                <select className="form-select" style={{ flex: 1, fontSize: 11, padding: '5px 4px' }}
                   value={day} onChange={e => setDay(Number(e.target.value))}>
                   {Array.from({ length: daysInMonth(year, month) }, (_, i) => i + 1).map(d => (
                     <option key={d} value={d}>{d} {WEEKDAYS[new Date(year, month, d).getDay()]}</option>
@@ -532,23 +531,23 @@ export default function AttendanceTab() {
                 </select>
               </DateArrowGroup>
               <DateArrowGroup onPrev={() => shiftMonth(-1)} onNext={() => shiftMonth(1)}>
-                <select className="form-select" style={{ flex: 1, fontSize: 10, padding: '4px 3px' }}
+                <select className="form-select" style={{ flex: 1, fontSize: 11, padding: '5px 4px' }}
                   value={month} onChange={e => setMonth(Number(e.target.value))}>
                   {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
                 </select>
               </DateArrowGroup>
               <DateArrowGroup onPrev={() => shiftYear(-1)} onNext={() => shiftYear(1)}>
-                <select className="form-select" style={{ flex: 1, fontSize: 10, padding: '4px 3px' }}
+                <select className="form-select" style={{ flex: 1, fontSize: 11, padding: '5px 4px' }}
                   value={year} onChange={e => setYear(Number(e.target.value))}>
                   {Array.from({ length: 8 }, (_, i) => year - 4 + i).map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </DateArrowGroup>
             </div>
 
-            <div style={{ display: 'flex', gap: 5, marginTop: 1 }}>
+            <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
               {['day', 'month', 'year'].map(m => (
                 <button key={m} className={'freq-day-btn' + (viewMode === m ? ' active' : '')}
-                  style={{ flex: 1, fontSize: 11, padding: '5px 0' }} onClick={() => setViewMode(m)}>
+                  style={{ flex: 1 }} onClick={() => setViewMode(m)}>
                   🗓️ {m[0].toUpperCase() + m.slice(1)}
                 </button>
               ))}
@@ -559,20 +558,20 @@ export default function AttendanceTab() {
 
       {/* Summary row — always visible, doesn't hide on scroll */}
       {viewMode === 'day' ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginBottom: 5, fontSize: 11.5 }}>
-          <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8, fontSize: 12.5 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <span style={{ color: '#4ade80', fontWeight: 700 }}>✅ {presentCount}</span>
             <span style={{ color: '#f87171', fontWeight: 700 }}>❌ {absentCount}</span>
             <span style={{ color: 'var(--gray)', fontWeight: 700 }}>⏳ {notMarkedCount}</span>
             {!classDay && <span style={{ color: 'var(--gold)' }} title="No one marked yet — likely a holiday">🏖️</span>}
           </div>
           {!isFutureDate && (
-            <div style={{ display: 'flex', gap: 9, fontWeight: 600 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+            <div style={{ display: 'flex', gap: 12, fontWeight: 600 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
                 title={!sportFilter ? 'Pick a specific sport to use Mark All' : undefined}>
                 <input type="checkbox" checked={allPChecked} onChange={() => markAll('P')} /> All P
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
                 title={!sportFilter ? 'Pick a specific sport to use Mark All' : undefined}>
                 <input type="checkbox" checked={allAChecked} onChange={() => markAll('A')} /> All A
               </label>
@@ -580,7 +579,7 @@ export default function AttendanceTab() {
           )}
         </div>
       ) : (
-        <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 5 }}>
+        <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8 }}>
           {students.length} student(s) · showing {viewMode === 'month' ? `${MONTHS[month]} ${year}` : `${year}`} summary
         </div>
       )}
