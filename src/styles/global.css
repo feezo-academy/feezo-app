@@ -93,6 +93,20 @@ body.dark-theme .app-copyright{background:#0a1830;color:#7f93b5;}
   flex: 1;
   overflow: hidden;
 }
+
+/* Directional slide+fade when the route changes (swipe or bottom-nav tap).
+   Applied to a wrapper keyed on the pathname, so it replays on every switch. */
+@keyframes tab-enter-right {
+  from { transform: translateX(28px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes tab-enter-left {
+  from { transform: translateX(-28px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+.tab-enter-right { animation: tab-enter-right .22s cubic-bezier(.4,0,.2,1); }
+.tab-enter-left { animation: tab-enter-left .22s cubic-bezier(.4,0,.2,1); }
+
 .page {
   position: absolute;
   top: 0;
