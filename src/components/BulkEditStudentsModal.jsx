@@ -25,18 +25,16 @@ export default function BulkEditStudentsModal({ students, selectedIds, allStuden
   const [sport, setSport] = useState(sports[0]?.name || '');
   const [batchLabel, setBatchLabel] = useState('');
   const [regenerateRoll, setRegenerateRoll] = useState(false);
-  const [blockAction, setBlockAction] = useState(''); // '', 'block', 'unblock'
+  const [markDropped, setMarkDropped] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  const blockedCount = selected.filter(s => s.banned).length;
-  const activeCount = selected.length - blockedCount;
 
   const batchOptions = batches.filter(b => b.sport === sport);
   const previewPrefix = changeSportBatch && sport && batchLabel ? rollPrefix(sport, batchLabel) : null;
 
   const save = async () => {
     if (changeSportBatch && (!sport || !batchLabel)) { setError('Pick both Sport and Batch, or turn that section off.'); return; }
+    if (!changeSchool && !changeSportBatch && !markDropped) { setError('Turn on at least one option to apply.'); return; }
     setSaving(true);
     setError('');
 
@@ -54,13 +52,7 @@ export default function BulkEditStudentsModal({ students, selectedIds, allStuden
         if (changeSchool) payload.address = school || null;
         if (changeSportBatch) payload.batch = buildBatchKey(sport, batchLabel);
         if (rollAssignments[s.id]) payload.roll_no = rollAssignments[s.id];
-        if (blockAction === 'block' && !s.banned) {
-          payload.banned = true;
-          payload.banned_on = new Date().toISOString();
-        } else if (blockAction === 'unblock' && s.banned) {
-          payload.banned = false;
-          payload.banned_on = null;
-        }
+        if (markDropped) { payload.banned = true; payload.banned_on = new Date().toISOString(); }
         if (Object.keys(payload).length === 0) continue;
         const { error: err } = await supabase.from('students').update(payload).eq('id', s.id);
         if (err) throw err;
@@ -143,42 +135,14 @@ export default function BulkEditStudentsModal({ students, selectedIds, allStuden
             )}
           </div>
 
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🚫 Dropout Status</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <label style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                fontSize: 12.5, fontWeight: 700, padding: '9px 8px', borderRadius: 8, cursor: 'pointer',
-                border: blockAction === 'block' ? '1.5px solid #dc2626' : '1px solid var(--border)',
-                background: blockAction === 'block' ? 'rgba(220,38,38,.08)' : 'transparent',
-                color: blockAction === 'block' ? '#dc2626' : 'var(--offwhite)',
-              }}>
-                <input type="radio" name="blockAction" style={{ display: 'none' }}
-                  checked={blockAction === 'block'}
-                  onChange={() => setBlockAction(blockAction === 'block' ? '' : 'block')} />
-                🚫 Block ({activeCount})
-              </label>
-              <label style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                fontSize: 12.5, fontWeight: 700, padding: '9px 8px', borderRadius: 8, cursor: 'pointer',
-                border: blockAction === 'unblock' ? '1.5px solid var(--accent2, #4a6cf7)' : '1px solid var(--border)',
-                background: blockAction === 'unblock' ? 'rgba(74,108,247,.08)' : 'transparent',
-                color: blockAction === 'unblock' ? 'var(--accent2, #4a6cf7)' : 'var(--offwhite)',
-              }}>
-                <input type="radio" name="blockAction" style={{ display: 'none' }}
-                  checked={blockAction === 'unblock'}
-                  onChange={() => setBlockAction(blockAction === 'unblock' ? '' : 'unblock')} />
-                ↩️ Unblock ({blockedCount})
-              </label>
-            </div>
-            {blockAction === 'block' && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#ef4444' }}>
+              <input type="checkbox" checked={markDropped} onChange={e => setMarkDropped(e.target.checked)} />
+              🚫 Move to Dropped / Blocked
+            </label>
+            {markDropped && (
               <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>
-                Moves {activeCount} active student{activeCount === 1 ? '' : 's'} to the Dropped Students list. Already-dropped selections are left as-is.
-              </div>
-            )}
-            {blockAction === 'unblock' && (
-              <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>
-                Restores {blockedCount} dropped student{blockedCount === 1 ? '' : 's'} back to the active list.
+                These {selected.length} student{selected.length === 1 ? '' : 's'} will be marked as Dropout and moved to the Dropped Students section.
               </div>
             )}
           </div>
@@ -192,7 +156,7 @@ export default function BulkEditStudentsModal({ students, selectedIds, allStuden
             Cancel
           </button>
           <button className="btn btn-primary" style={{ flex: 1.4, justifyContent: 'center', padding: '10px 0' }} onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : `💾 Apply to ${selected.length}`}
+            {saving ? 'Saving…' : markDropped && !changeSchool && !changeSportBatch ? `🚫 Drop ${selected.length}` : `💾 Apply to ${selected.length}`}
           </button>
         </div>
       </div>
