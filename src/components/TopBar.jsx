@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-export default function TopBar({ academyName, greeting, onToggleMenu, onToggleNotif, hasNotif }) {
+export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, onToggleNotif, hasNotif }) {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
@@ -21,9 +21,9 @@ export default function TopBar({ academyName, greeting, onToggleMenu, onToggleNo
         <div
           className="logo-img"
           onClick={() => { if (isAdmin) navigate('/profile'); }}
-          style={{ cursor: 'pointer', flexShrink: 0 }}
+          style={{ cursor: 'pointer', flexShrink: 0, overflow: 'hidden' }}
           title="Go to Profile"
-        >⚔️</div>
+        >{logoUrl ? <img src={logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '⚔️'}</div>
         <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
           <div className="academy-name" style={{ whiteSpace: 'normal', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.25, fontSize: 13, wordBreak: 'break-word' }}>
             {academyName || 'Academy'}
