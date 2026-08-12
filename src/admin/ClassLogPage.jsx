@@ -29,6 +29,52 @@ function calcDuration(inTime, outTime) {
 
 const emptyForm = { date: todayStr(), sport: '', batch: '', inTime: '', outTime: '', note: '' };
 
+// Converts a 24h "HH:MM" value into { h12, min, period } for the custom picker
+function to12(t) {
+  if (!t) return { h12: '', min: '', period: 'AM' };
+  const [h, m] = t.split(':').map(Number);
+  return { h12: String((h % 12) || 12), min: pad(m), period: h >= 12 ? 'PM' : 'AM' };
+}
+// Converts { h12, min, period } back into a 24h "HH:MM" string
+function to24(h12, min, period) {
+  if (!h12 || min === '') return '';
+  let h = parseInt(h12, 10) % 12;
+  if (period === 'PM') h += 12;
+  return `${pad(h)}:${pad(parseInt(min, 10))}`;
+}
+
+const HOUR_OPTS = Array.from({ length: 12 }, (_, i) => String(i + 1));
+const MIN_OPTS = Array.from({ length: 12 }, (_, i) => pad(i * 5));
+
+// A 3-part 12-hour time picker (hour / minute / AM-PM) that stores its value
+// as a plain 24h "HH:MM" string, so the rest of the app (duration calc,
+// Supabase columns) doesn't need to change.
+function TimePicker12({ value, onChange, accentColor }) {
+  const { h12, min, period } = to12(value);
+  const selStyle = { flex: 1, padding: '10px 6px', fontSize: 13, textAlign: 'center' };
+  const set = (nh, nm, np) => onChange(to24(nh, nm, np));
+  return (
+    <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+      <select className="form-select" style={selStyle} value={h12}
+        onChange={(e) => set(e.target.value, min || '00', period)}>
+        <option value="">--</option>
+        {HOUR_OPTS.map(h => <option key={h} value={h}>{h}</option>)}
+      </select>
+      <span style={{ color: accentColor || 'var(--gray)', fontWeight: 700 }}>:</span>
+      <select className="form-select" style={selStyle} value={min}
+        onChange={(e) => set(h12 || '12', e.target.value, period)}>
+        <option value="">--</option>
+        {MIN_OPTS.map(m => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <select className="form-select" style={{ ...selStyle, flex: '0 0 62px' }} value={period}
+        onChange={(e) => set(h12 || '12', min || '00', e.target.value)}>
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  );
+}
+
 export default function ClassLogPage() {
   const { academyId, isAdmin, appUser, assignedSports, assignedBatches } = useAuth();
   const { visibleSports, visibleBatches } = useAcademyData();
@@ -194,7 +240,7 @@ export default function ClassLogPage() {
 
       {/* Export buttons */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-        <button className="btn" style={{ background: 'var(--gold)', color: '#1a1a1a', fontSize: 11, padding: '6px 10px' }} onClick={handleExportPdf}>PDF</button>
+        <button className="btn" style={{ background: 'var(--gold)', color: '#fff', fontSize: 11, padding: '6px 10px' }} onClick={handleExportPdf}>PDF</button>
         <button className="btn" style={{ background: '#16a34a', color: '#fff', fontSize: 11, padding: '6px 10px' }} onClick={handleExportXlsx}>XL</button>
       </div>
 
@@ -216,7 +262,7 @@ export default function ClassLogPage() {
           onChange={(e) => setFilterBatch(e.target.value)}
         >
           <option value="">All Batches</option>
-          {filterBatchOptions.map(b => <option key={b.name} value={b.name}>{b.batchLabel}</option>)}
+          {filterBatchOptions.map(b => <option key={b.name} value={b.name}>{b.sport} : {b.batchLabel}</option>)}
         </select>
       </div>
 
@@ -318,7 +364,7 @@ export default function ClassLogPage() {
               <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Batch</label>
               <select className="form-select" value={form.batch} onChange={(e) => setForm(f => ({ ...f, batch: e.target.value }))}>
                 <option value="">{form.sport ? '— Select —' : '— Choose a sport first —'}</option>
-                {addBatchOptions.map(b => <option key={b.name} value={b.name}>{b.batchLabel}</option>)}
+                {addBatchOptions.map(b => <option key={b.name} value={b.name}>{b.sport} : {b.batchLabel}</option>)}
               </select>
             </div>
 
@@ -327,11 +373,11 @@ export default function ClassLogPage() {
               <div style={{ display: 'flex', gap: 10 }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: '#16a34a' }}>🟢 In Time</label>
-                  <input type="time" className="form-input" value={form.inTime} onChange={(e) => setForm(f => ({ ...f, inTime: e.target.value }))} />
+                  <TimePicker12 value={form.inTime} onChange={(v) => setForm(f => ({ ...f, inTime: v }))} accentColor="#16a34a" />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: '#dc2626' }}>🔴 Out Time</label>
-                  <input type="time" className="form-input" value={form.outTime} onChange={(e) => setForm(f => ({ ...f, outTime: e.target.value }))} />
+                  <TimePicker12 value={form.outTime} onChange={(v) => setForm(f => ({ ...f, outTime: v }))} accentColor="#dc2626" />
                 </div>
               </div>
             </div>
@@ -374,20 +420,18 @@ export default function ClassLogPage() {
               <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Batch</label>
               <select className="form-select" value={editEntry.batch || ''}
                 onChange={(e) => setEditEntry(v => ({ ...v, batch: e.target.value }))}>
-                {visibleBatches.map(b => <option key={b.name} value={b.name}>{b.batchLabel} ({b.sport})</option>)}
+                {visibleBatches.map(b => <option key={b.name} value={b.name}>{b.sport} : {b.batchLabel}</option>)}
               </select>
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
               <div style={{ flex: 1 }}>
                 <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: '#16a34a' }}>🟢 In Time</label>
-                <input type="time" className="form-input" value={editEntry.inTime || ''}
-                  onChange={(e) => setEditEntry(v => ({ ...v, inTime: e.target.value }))} />
+                <TimePicker12 value={editEntry.inTime || ''} onChange={(v) => setEditEntry(en => ({ ...en, inTime: v }))} accentColor="#16a34a" />
               </div>
               <div style={{ flex: 1 }}>
                 <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: '#dc2626' }}>🔴 Out Time</label>
-                <input type="time" className="form-input" value={editEntry.outTime || ''}
-                  onChange={(e) => setEditEntry(v => ({ ...v, outTime: e.target.value }))} />
+                <TimePicker12 value={editEntry.outTime || ''} onChange={(v) => setEditEntry(en => ({ ...en, outTime: v }))} accentColor="#dc2626" />
               </div>
             </div>
 
