@@ -90,21 +90,6 @@ export default function StudentsTab() {
     if (firstBatch) setBatchFilter(firstBatch.name);
   }, [visibleSports, visibleBatches]);
 
-  // Default to the first available sport and batch, instead of "All Sports / All Batches".
-  useEffect(() => {
-    if (!sportFilter && visibleSports.length > 0) {
-      setSportFilter(visibleSports[0].name);
-    }
-  }, [visibleSports, sportFilter]);
-
-  useEffect(() => {
-    if (!sportFilter) return;
-    if (!batchFilter) {
-      const firstBatch = visibleBatches.find(b => b.sport === sportFilter);
-      if (firstBatch) setBatchFilter(firstBatch.name);
-    }
-  }, [sportFilter, visibleBatches, batchFilter]);
-
   const toggleSelect = (id) => {
     setSelected(prev => {
       const next = new Set(prev);
