@@ -337,8 +337,8 @@ export default function ClassLogPage() {
 
       {/* ── Add Modal ── */}
       {showAdd && (
-        <div className="modal-overlay active" onClick={() => setShowAdd(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay active" style={{ alignItems: 'center', padding: 16 }} onClick={() => setShowAdd(false)}>
+          <div className="modal" style={{ borderRadius: 18, maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               Log a Class
               <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
@@ -403,8 +403,8 @@ export default function ClassLogPage() {
 
       {/* ── Edit Modal (admin only) ── */}
       {editEntry && (
-        <div className="modal-overlay active" onClick={() => setEditEntry(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay active" style={{ alignItems: 'center', padding: 16 }} onClick={() => setEditEntry(null)}>
+          <div className="modal" style={{ borderRadius: 18, maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               Edit Entry
               <button className="modal-close" onClick={() => setEditEntry(null)}>×</button>
