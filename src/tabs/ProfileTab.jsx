@@ -33,10 +33,7 @@ export default function ProfileTab() {
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>👤 Profile</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn btn-outline btn-sm" onClick={() => setShowSettings(true)}>⚙️ Settings</button>
-          <button className="btn btn-danger btn-sm" onClick={logout}>Logout</button>
-        </div>
+        <button className="btn btn-outline btn-sm" onClick={() => setShowSettings(true)}>⚙️ Settings</button>
       </div>
 
       <div style={{ marginBottom: 14 }}>
@@ -60,7 +57,7 @@ export default function ProfileTab() {
         <RowButton icon="💰" label="Fees Log" onClick={() => setShowFeesLog(true)} />
       </div>
 
-      <button className="btn btn-outline" style={{ width: '100%' }} onClick={logout}>Sign Out</button>
+      <button className="btn btn-danger" style={{ width: '100%' }} onClick={logout}>Sign Out</button>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {msgModal && <FeeMsgModal kind={msgModal} onClose={() => setMsgModal(null)} />}
