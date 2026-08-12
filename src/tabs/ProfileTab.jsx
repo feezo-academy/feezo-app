@@ -7,7 +7,8 @@ const ADMIN_LINKS = [
   { to: '/admin/courses', label: 'Courses', icon: '📚' },
   { to: '/admin/schedules', label: 'Schedules', icon: '🗓️' },
   { to: '/admin/performance', label: 'Performance', icon: '🏆' },
-  { to: '/admin/activity', label: 'Activity Log', icon: '📋' },
+  { to: '/admin/class-log', label: 'Activity Log', icon: '📋' },
+  { to: '/admin/activity', label: 'Audit Log', icon: '🛡️' },
   { to: '/admin/leave-count', label: 'Leave Count', icon: '🌴' },
 ];
 
@@ -37,6 +38,15 @@ export default function ProfileTab() {
               <span style={{ fontWeight: 600, fontSize: 14 }}>{l.label}</span>
             </Link>
           ))}
+        </div>
+      )}
+
+      {!isAdmin && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+          <Link to="/admin/class-log" className="card" style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+            <span style={{ fontSize: 18 }}>📋</span>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>My Activity</span>
+          </Link>
         </div>
       )}
 
