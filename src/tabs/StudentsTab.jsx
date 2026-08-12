@@ -10,14 +10,13 @@ import { exportStudentsPdf, exportStudentsXlsx } from '../lib/exporters';
 
 function RollBadge({ rollNo }) {
   return (
-    <div style={{
-      minWidth: 34, height: 34, padding: '0 4px', borderRadius: '50%',
-      background: 'var(--accent2, #4a6cf7)', color: '#fff',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: rollNo && rollNo.length > 2 ? 10.5 : 12.5, fontWeight: 800, flexShrink: 0,
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      minWidth: 34, height: 24, padding: '0 8px', borderRadius: 8,
+      background: 'var(--accent2)', color: '#fff', fontSize: 12, fontWeight: 800, flexShrink: 0,
     }}>
-      {rollNo || '—'}
-    </div>
+      {rollNo || '+Roll'}
+    </span>
   );
 }
 
@@ -152,13 +151,13 @@ export default function StudentsTab() {
 
         {droppedList.length > 0 && (
           <>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px', margin: '16px 0 8px' }}>
-              🚫 Dropped Students
+            <div style={{ textAlign: 'center', fontSize: 12, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.6px', margin: '18px 0 10px' }}>
+              — Dropout / Banned Students —
             </div>
             {droppedList.map(s => (
               <div key={s.id} className="card" style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8, cursor: 'pointer',
-                border: '1px solid rgba(220,38,38,.25)', background: 'rgba(220,38,38,.04)',
+                background: 'rgba(220,38,38,.05)', border: '1px solid rgba(220,38,38,.25)',
               }}
                 onClick={(e) => { if (e.target.type !== 'checkbox') setDetailStudent(s); }}>
                 {isAdmin && (
@@ -166,12 +165,9 @@ export default function StudentsTab() {
                 )}
                 <RollBadge rollNo={s.roll_no} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</span>
-                    <span style={{
-                      fontSize: 10.5, fontWeight: 700, color: 'var(--red, #dc2626)', background: 'rgba(220,38,38,.1)',
-                      border: '1px solid rgba(220,38,38,.3)', borderRadius: 20, padding: '2px 8px',
-                    }}>Dropout</span>
+                  <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    {s.name}
+                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'rgba(220,38,38,.12)', color: '#ef4444' }}>Dropout</span>
                   </div>
                 </div>
                 <span style={{ color: 'var(--gray)' }}>›</span>
