@@ -12,7 +12,6 @@ const ADMIN_LINKS = [
   { to: '/admin/courses', label: 'Courses', icon: '📚' },
   { to: '/admin/performance', label: 'Performance', icon: '🏆' },
   { to: '/admin/activity', label: 'Activity Log', icon: '📋' },
-  { to: '/admin/leave-count', label: 'Leave Count', icon: '🌴' },
 ];
 
 export default function ProfileTab() {
@@ -31,13 +30,6 @@ export default function ProfileTab() {
 
       <div style={{ marginBottom: 14 }}>
         <AcademyCard />
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-        <Link to="/calendar" className="card" style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-          <span style={{ fontSize: 18 }}>📅</span>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>Calendar</span>
-        </Link>
       </div>
 
       {isAdmin && (
