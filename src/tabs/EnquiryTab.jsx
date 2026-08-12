@@ -55,7 +55,7 @@ function Field({ label, children }) {
 
 export default function EnquiryTab() {
   const { academyId, isAdmin, appUser } = useAuth();
-  const { visibleSports } = useAcademyData();
+  const { visibleSports, visibleBatches } = useAcademyData();
   const [enquiries, setEnquiries] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -492,7 +492,7 @@ export default function EnquiryTab() {
         <AddStudentModal
           academyId={academyId}
           sports={visibleSports}
-          batches={[]}
+          batches={visibleBatches}
           initial={convertPrefill}
           existingStudents={[]}
           onClose={() => { setConvertPrefill(null); setConvertingEnqId(null); }}
