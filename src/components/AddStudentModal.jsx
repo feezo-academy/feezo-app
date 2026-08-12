@@ -41,7 +41,9 @@ function SectionLabel({ children }) {
 }
 
 // Pass `student` to edit an existing row instead of creating a new one.
-export default function AddStudentModal({ academyId, sports, batches, student, existingStudents = [], onClose, onSaved }) {
+// Pass `initial` (add-mode only) to pre-fill a new student's form, e.g. when
+// converting an enquiry — a new row is still created, unlike `student`.
+export default function AddStudentModal({ academyId, sports, batches, student, initial, existingStudents = [], onClose, onSaved }) {
   const isEdit = !!student;
   const [form, setForm] = useState(() => isEdit ? {
     roll_no: student.roll_no || '', name: student.name || '', dob: student.dob || '', gender: student.gender || '',
@@ -49,8 +51,9 @@ export default function AddStudentModal({ academyId, sports, batches, student, e
     address: student.address || '', join_date: student.join_date || todayIso(),
     sport: student.sport || sports[0]?.name || '', batchLabel: student.batchLabel || '',
   } : {
-    roll_no: '', name: '', dob: '', gender: '', parent: '', contact: '', contact2: '', address: '',
-    join_date: todayIso(), sport: sports[0]?.name || '', batchLabel: '',
+    roll_no: '', name: initial?.name || '', dob: '', gender: '', parent: initial?.parent || '',
+    contact: initial?.contact || '', contact2: '', address: '',
+    join_date: todayIso(), sport: initial?.sport || sports[0]?.name || '', batchLabel: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
