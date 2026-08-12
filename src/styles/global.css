@@ -202,6 +202,7 @@ tr:hover td{background:var(--card2);}
 .modal{background:var(--card);border-radius:20px 20px 0 0;padding:18px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto;}
 .modal-title{font-size:16px;font-weight:700;color:var(--gold);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
 .modal-close{background:var(--royal2);border:none;color:var(--gray);width:28px;height:28px;border-radius:50%;font-size:17px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.ts-day-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:20px;border:1.5px solid var(--border);background:var(--card2);cursor:pointer;font-size:12px;font-weight:600;color:var(--gray);transition:all .15s;user-select:none;}
 
 /* CONFIRM */
 .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:2000;display:none;align-items:center;justify-content:center;padding:20px;}
