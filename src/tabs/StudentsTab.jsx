@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
@@ -7,6 +7,22 @@ import StudentDetailModal from '../components/StudentDetailModal';
 import ImportStudentsModal from '../components/ImportStudentsModal';
 import BulkEditStudentsModal from '../components/BulkEditStudentsModal';
 import { exportStudentsPdf, exportStudentsXlsx } from '../lib/exporters';
+
+// Natural sort for roll numbers like "SM1", "SM2", "SM10" — plain string
+// comparison would wrongly put "SM10" before "SM2". This splits into the
+// letter prefix and numeric part and compares the number numerically.
+function compareRollNo(a, b) {
+  const ra = String(a || '');
+  const rb = String(b || '');
+  const pa = ra.match(/^(\D*)(\d*)/);
+  const pb = rb.match(/^(\D*)(\d*)/);
+  const prefixCmp = (pa[1] || '').localeCompare(pb[1] || '');
+  if (prefixCmp !== 0) return prefixCmp;
+  const na = pa[2] ? parseInt(pa[2], 10) : NaN;
+  const nb = pb[2] ? parseInt(pb[2], 10) : NaN;
+  if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+  return ra.localeCompare(rb);
+}
 
 function RollBadge({ rollNo }) {
   return (
@@ -46,10 +62,10 @@ export default function StudentsTab() {
     });
     list = [...list].sort((a, b) => {
       switch (sortBy) {
-        case 'roll_desc': return (b.roll_no || '').localeCompare(a.roll_no || '');
+        case 'roll_desc': return compareRollNo(b.roll_no, a.roll_no);
         case 'name_az': return (a.name || '').localeCompare(b.name || '');
         case 'name_za': return (b.name || '').localeCompare(a.name || '');
-        default: return (a.roll_no || '').localeCompare(b.roll_no || '');
+        default: return compareRollNo(a.roll_no, b.roll_no);
       }
     });
     return list;
@@ -60,6 +76,34 @@ export default function StudentsTab() {
   const droppedList = useMemo(() => filtered.filter(s => s.banned), [filtered]);
 
   const batchesForSport = visibleBatches.filter(b => !sportFilter || b.sport === sportFilter);
+
+  // Default to the first available sport and batch (once, on initial load) instead of
+  // "All Sports / All Batches" — but don't fight the user if they deliberately pick "All" later.
+  const didInitFilters = useRef(false);
+  useEffect(() => {
+    if (didInitFilters.current) return;
+    if (visibleSports.length === 0) return;
+    didInitFilters.current = true;
+    const firstSport = visibleSports[0].name;
+    setSportFilter(firstSport);
+    const firstBatch = visibleBatches.find(b => b.sport === firstSport);
+    if (firstBatch) setBatchFilter(firstBatch.name);
+  }, [visibleSports, visibleBatches]);
+
+  // Default to the first available sport and batch, instead of "All Sports / All Batches".
+  useEffect(() => {
+    if (!sportFilter && visibleSports.length > 0) {
+      setSportFilter(visibleSports[0].name);
+    }
+  }, [visibleSports, sportFilter]);
+
+  useEffect(() => {
+    if (!sportFilter) return;
+    if (!batchFilter) {
+      const firstBatch = visibleBatches.find(b => b.sport === sportFilter);
+      if (firstBatch) setBatchFilter(firstBatch.name);
+    }
+  }, [sportFilter, visibleBatches, batchFilter]);
 
   const toggleSelect = (id) => {
     setSelected(prev => {
@@ -84,7 +128,7 @@ export default function StudentsTab() {
           <div className="section-title" style={{ marginBottom: 0, whiteSpace: 'nowrap' }}>👥 Students</div>
           {isAdmin && (
             <div style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, background: 'var(--card2)', color: 'var(--gray)' }}>
-              {visibleStudents.length} total
+              {(sportFilter || batchFilter || search) ? `${filtered.length} of ${visibleStudents.length}` : `${visibleStudents.length} total`}
             </div>
           )}
         </div>
@@ -105,7 +149,12 @@ export default function StudentsTab() {
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
-            value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter(''); }}>
+            value={sportFilter} onChange={e => {
+              const newSport = e.target.value;
+              setSportFilter(newSport);
+              const firstBatch = visibleBatches.find(b => b.sport === newSport);
+              setBatchFilter(newSport ? (firstBatch ? firstBatch.name : '') : '');
+            }}>
             <option value="">All Sports</option>
             {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
