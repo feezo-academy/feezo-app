@@ -30,6 +30,7 @@ function AppShell() {
     <div id="app" className="active">
       <TopBar
         academyName={academy?.name || 'Academy'}
+        logoUrl={academy?.logo_url}
         greeting="Welcome back"
         onToggleMenu={() => setMenuOpen(v => !v)}
         onToggleNotif={() => {}}
