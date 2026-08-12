@@ -161,16 +161,28 @@ export default function AttendanceTab() {
         setLateMap(late);
 
         // Optional table, scoped per (academy, date, sport) — requires a `sport`
-        // text column and a unique constraint on (academy_id, date, sport). Fails
-        // quietly if that hasn't been migrated yet.
+        // text column and a unique constraint on (academy_id, date, sport).
+        // Falls back to a single whole-day flag (applies to every sport) if
+        // that column hasn't been migrated in yet — matches the write-side
+        // fallback in markAllDone, so close-state stays consistent either way.
         try {
-          const { data: statusRows } = await supabase.from('attendance_day_status')
+          const { data: statusRows, error: statusErr } = await supabase.from('attendance_day_status')
             .select('sport,completed').eq('academy_id', academyId).eq('date', date);
+          if (statusErr) throw statusErr;
           const dmap = {};
           (statusRows || []).forEach(r => { dmap[r.sport] = !!r.completed; });
           setDayStatusMap(dmap);
         } catch {
-          setDayStatusMap({});
+          try {
+            const { data: legacyRows } = await supabase.from('attendance_day_status')
+              .select('completed').eq('academy_id', academyId).eq('date', date);
+            const wholeDayDone = (legacyRows || []).some(r => r.completed);
+            const dmap = {};
+            if (wholeDayDone) visibleSports.forEach(sp => { dmap[sp.name] = true; });
+            setDayStatusMap(dmap);
+          } catch {
+            setDayStatusMap({});
+          }
         }
       } else if (viewMode === 'month') {
         const from = toIso(new Date(year, month, 1));
@@ -206,7 +218,7 @@ export default function AttendanceTab() {
       }
       setLoading(false);
     })();
-  }, [academyId, date, viewMode, year, month, reloadKey, students]);
+  }, [academyId, date, viewMode, year, month, reloadKey, students, visibleSports]);
 
   // Tapping P/A. Behavior depends on whether that student's sport register is
   // closed for the day (dayStatusMap[sport]):
@@ -331,7 +343,7 @@ export default function AttendanceTab() {
   const dayCompleted = sportFilter ? !!dayStatusMap[sportFilter] : false;
 
   const markAllDone = async () => {
-    if (!sportFilter) { window.alert('Pick a specific sport above to close its register.'); return; }
+    if (!sportFilter || !batchFilter) { window.alert('Pick a specific sport and batch above to close its register.'); return; }
     if (!students.length || dayCompleted || isFutureDate) return;
     const ok = window.confirm(
       `Close the ${sportFilter} attendance register for ${date}?\n\nMarked students will be locked. Anyone marked Present afterward will be flagged as a latecomer. This cannot be undone.`
@@ -481,34 +493,34 @@ export default function AttendanceTab() {
         marginBottom: filtersVisible ? 7 : 0,
         transition: 'max-height .25s ease, opacity .2s ease, margin-bottom .25s ease',
       }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+          <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
             value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter(''); }}>
-            <option value="">All Sports</option>
+            <option value="">Sports</option>
             {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
-          <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
+          <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
             value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
-            <option value="">All Batches</option>
+            <option value="">Batches</option>
             {batchesForSport.map(b => <option key={b.id} value={b.name}>{b.batchLabel}</option>)}
           </select>
           {viewMode === 'day' && (
-            <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
+            <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
               value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-              <option value="all">All Status</option>
+              <option value="all">Status</option>
               <option value="present">Present</option>
               <option value="absent">Absent</option>
             </select>
           )}
-          <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
+          <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
             value={sortBy} onChange={e => setSortBy(e.target.value)}>
-            <option value="roll_asc">Roll No ↑</option>
-            <option value="roll_desc">Roll No ↓</option>
-            <option value="name_az">Name A→Z</option>
-            <option value="name_za">Name Z→A</option>
-            <option value="present_first">✅ Present First</option>
-            <option value="absent_first">❌ Absent First</option>
-            <option value="unmarked_first">⏳ Unmarked First</option>
+            <option value="roll_asc">Roll ↑</option>
+            <option value="roll_desc">Roll ↓</option>
+            <option value="name_az">A→Z</option>
+            <option value="name_za">Z→A</option>
+            <option value="present_first">✅ Present</option>
+            <option value="absent_first">❌ Absent</option>
+            <option value="unmarked_first">⏳ Unmarked</option>
           </select>
         </div>
       </div>
@@ -680,9 +692,9 @@ export default function AttendanceTab() {
         })}
 
         {!loading && isAdmin && viewMode === 'day' && !isFutureDate && students.length > 0 && (
-          sportFilter === '' ? (
+          !sportFilter || !batchFilter ? (
             <div style={{ fontSize: 11, color: 'var(--graydk)', marginTop: 10, padding: '8px 10px', background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 8 }}>
-              👉 You're viewing <b>All Sports</b>. Pick a specific sport above to close its register (Done) and flag latecomers.
+              👉 Pick a specific <b>sport</b> and <b>batch</b> above to close its register (Done) and flag latecomers.
             </div>
           ) : dayCompleted ? (
             <>
