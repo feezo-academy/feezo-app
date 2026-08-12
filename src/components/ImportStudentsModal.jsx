@@ -59,7 +59,9 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
   const downloadTemplate = () => {
     const headers = ['Name', 'RollNo', 'Sport', 'Batch', 'DOB', 'Parent', 'Contact', 'Contact2', 'School', 'JoinDate'];
     const today = new Date().toISOString().slice(0, 10);
-    const example1 = ['Arjun Kumar', '', sports[0]?.name || 'Sport A', 'Batch 1', '2013-06-15', 'Ramesh Kumar', '9876543210', '', 'ABC School', today];
+    const firstSport = sports[0]?.name || 'Sport A';
+    const firstBatch = batches.find(b => b.sport === firstSport)?.batchLabel || 'Batch 1';
+    const example1 = ['Arjun Kumar', '', firstSport, firstBatch, '2013-06-15', 'Ramesh Kumar', '9876543210', '', 'ABC School', today];
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([headers, example1]);
     ws['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }];
@@ -118,6 +120,12 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         DOB: get(cols, 'dob'), Parent: get(cols, 'parent'), Contact: get(cols, 'contact'),
         Contact2: get(cols, 'contact2'), School: get(cols, 'address'), JoinDate: get(cols, 'joinDate'),
       };
+      // Silently skip fully-blank rows — spreadsheet apps often leave empty
+      // formatted rows (row-height/styling with no cell data) when a file is
+      // re-saved, and those shouldn't count as rejected import rows.
+      const isBlankRow = Object.values(raw).every(v => !v);
+      if (isBlankRow) continue;
+
       if (!name) { rej.push({ label: `Row ${i + 1}`, reason: 'Missing name', raw }); continue; }
       const matchedSport = sports.find(s => s.name.toLowerCase() === sportRaw.toLowerCase());
       if (!matchedSport) { rej.push({ label: name, reason: `Sport "${sportRaw}" not found`, raw }); continue; }
