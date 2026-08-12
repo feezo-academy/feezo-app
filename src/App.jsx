@@ -51,7 +51,7 @@ function AppShell() {
         hasNotif={false}
       />
       <div className="content pages-viewport" ref={viewportRef} style={{ padding: '10px 14px' }}>
-        <div key={location.pathname} className={animClass}>
+        <div key={location.pathname} className={animClass} style={{ position: 'absolute', inset: 0 }}>
           <Routes>
             <Route path="/home" element={<HomeTab />} />
             <Route path="/students" element={<StudentsTab />} />
