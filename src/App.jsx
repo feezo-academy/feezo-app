@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
-import { AcademyDataProvider } from './context/AcademyDataContext';
+import { AcademyDataProvider, useAcademyData } from './context/AcademyDataContext';
 import LoginScreen from './pages/LoginScreen';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
@@ -24,11 +24,12 @@ import StaffLeavePage from './admin/StaffLeavePage';
 
 function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { academy } = useAcademyData();
 
   return (
     <div id="app" className="active">
       <TopBar
-        academyName="Academy"
+        academyName={academy?.name || 'Academy'}
         greeting="Welcome back"
         onToggleMenu={() => setMenuOpen(v => !v)}
         onToggleNotif={() => {}}
