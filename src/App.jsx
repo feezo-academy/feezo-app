@@ -5,6 +5,7 @@ import { AcademyDataProvider } from './context/AcademyDataContext';
 import LoginScreen from './pages/LoginScreen';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
+import NavDrawer from './components/NavDrawer';
 import HomeTab from './tabs/HomeTab';
 import StudentsTab from './tabs/StudentsTab';
 import AttendanceTab from './tabs/AttendanceTab';
@@ -54,6 +55,7 @@ function AppShell() {
         </Routes>
       </div>
       <BottomNav />
+      <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
       <div className="app-copyright">© 2026 FeeZo Solutions · v3</div>
     </div>
   );
