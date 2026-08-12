@@ -3,8 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import AcademyCard from '../components/AcademyCard';
 import SettingsModal from '../components/SettingsModal';
-import FeeMsgTemplates from '../components/FeeMsgTemplates';
-import FeesLogCard from '../components/FeesLogCard';
+import FeeMsgModal from '../components/FeeMsgModal';
+import FeesLogModal from '../components/FeesLogModal';
 
 const ADMIN_LINKS = [
   { to: '/admin/sports-batches', label: 'Sports & Batches', icon: '🥋' },
@@ -14,9 +14,20 @@ const ADMIN_LINKS = [
   { to: '/admin/activity', label: 'Activity Log', icon: '📋' },
 ];
 
+function RowButton({ icon, label, onClick }) {
+  return (
+    <button className="card" style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', width: '100%', textAlign: 'left', background: 'var(--card)', border: '1px solid var(--border)', cursor: 'pointer' }} onClick={onClick}>
+      <span style={{ fontSize: 18 }}>{icon}</span>
+      <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--offwhite)' }}>{label}</span>
+    </button>
+  );
+}
+
 export default function ProfileTab() {
   const { isAdmin, logout } = useAuth();
   const [showSettings, setShowSettings] = useState(false);
+  const [msgModal, setMsgModal] = useState(null); // 'reminder' | 'thank' | null
+  const [showFeesLog, setShowFeesLog] = useState(false);
 
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
@@ -43,19 +54,17 @@ export default function ProfileTab() {
         </div>
       )}
 
-      {isAdmin && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-          <FeeMsgTemplates />
-        </div>
-      )}
-
-      <div style={{ marginBottom: 14 }}>
-        <FeesLogCard />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+        {isAdmin && <RowButton icon="✅" label="Default Fee Reminder Message" onClick={() => setMsgModal('reminder')} />}
+        {isAdmin && <RowButton icon="🎉" label="Payment Thank-You Message" onClick={() => setMsgModal('thank')} />}
+        <RowButton icon="💰" label="Fees Log" onClick={() => setShowFeesLog(true)} />
       </div>
 
       <button className="btn btn-outline" style={{ width: '100%' }} onClick={logout}>Sign Out</button>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {msgModal && <FeeMsgModal kind={msgModal} onClose={() => setMsgModal(null)} />}
+      {showFeesLog && <FeesLogModal onClose={() => setShowFeesLog(false)} />}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { exportGenericPdf, exportGenericXlsx } from '../lib/exporters';
 import SendMessageModal from '../components/SendMessageModal';
-import { DEFAULT_MSG, DEFAULT_THANK } from '../components/FeeMsgTemplates';
+import { DEFAULT_MSG, DEFAULT_THANK } from '../components/FeeMsgModal';
 
 function buildMsg(tpl, ctx) {
   return tpl
