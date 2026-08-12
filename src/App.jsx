@@ -4,7 +4,6 @@ import { useAuth } from './context/AuthContext';
 import { AcademyDataProvider } from './context/AcademyDataContext';
 import LoginScreen from './pages/LoginScreen';
 import TopBar from './components/TopBar';
-import SideDrawer from './components/SideDrawer';
 import BottomNav from './components/BottomNav';
 import HomeTab from './tabs/HomeTab';
 import StudentsTab from './tabs/StudentsTab';
@@ -12,14 +11,15 @@ import AttendanceTab from './tabs/AttendanceTab';
 import FeesTab from './tabs/FeesTab';
 import EnquiryTab from './tabs/EnquiryTab';
 import ProfileTab from './tabs/ProfileTab';
+import CalendarTab from './tabs/CalendarTab';
 import SportsBatchesPage from './admin/SportsBatchesPage';
 import UsersPage from './admin/UsersPage';
 import CoursesPage from './admin/CoursesPage';
 import SchedulesPage from './admin/SchedulesPage';
 import PerformancePage from './admin/PerformancePage';
 import ActivityPage from './admin/ActivityPage';
-import ClassLogPage from './admin/ClassLogPage';
 import LeaveCountPage from './admin/LeaveCountPage';
+import StaffLeavePage from './admin/StaffLeavePage';
 
 function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -33,7 +33,6 @@ function AppShell() {
         onToggleNotif={() => {}}
         hasNotif={false}
       />
-      <SideDrawer open={menuOpen} onClose={() => setMenuOpen(false)} academyName="Academy" />
       <div className="content pages-viewport" style={{ padding: '10px 14px' }}>
         <Routes>
           <Route path="/home" element={<HomeTab />} />
@@ -41,6 +40,8 @@ function AppShell() {
           <Route path="/attendance" element={<AttendanceTab />} />
           <Route path="/fees" element={<FeesTab />} />
           <Route path="/enquiry" element={<EnquiryTab />} />
+          <Route path="/calendar" element={<CalendarTab />} />
+          <Route path="/calendar/leave" element={<StaffLeavePage />} />
           <Route path="/profile" element={<ProfileTab />} />
           <Route path="/admin/sports-batches" element={<SportsBatchesPage />} />
           <Route path="/admin/users" element={<UsersPage />} />
@@ -48,7 +49,6 @@ function AppShell() {
           <Route path="/admin/schedules" element={<SchedulesPage />} />
           <Route path="/admin/performance" element={<PerformancePage />} />
           <Route path="/admin/activity" element={<ActivityPage />} />
-          <Route path="/admin/class-log" element={<ClassLogPage />} />
           <Route path="/admin/leave-count" element={<LeaveCountPage />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
