@@ -10,6 +10,7 @@ export function AcademyDataProvider({ children }) {
   const [sports, setSports] = useState([]);
   const [rawBatches, setRawBatches] = useState([]);
   const [rawStudents, setRawStudents] = useState([]);
+  const [academy, setAcademy] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -26,7 +27,14 @@ export function AcademyDataProvider({ children }) {
     setLoading(false);
   }, [academyId]);
 
+  const refreshAcademy = useCallback(async () => {
+    if (!academyId) return;
+    const { data } = await supabase.from('academies').select('*').eq('id', academyId).single();
+    setAcademy(data || null);
+  }, [academyId]);
+
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refreshAcademy(); }, [refreshAcademy]);
 
   // batches.name and students.batch are stored as "Sport::BatchName" composite
   // keys (same batch label can exist under multiple sports), so derive a
@@ -62,6 +70,7 @@ export function AcademyDataProvider({ children }) {
   const value = {
     sports, batches, students, loading, refresh,
     visibleSports, visibleBatches, visibleStudents,
+    academy, refreshAcademy,
   };
 
   return <AcademyDataContext.Provider value={value}>{children}</AcademyDataContext.Provider>;
