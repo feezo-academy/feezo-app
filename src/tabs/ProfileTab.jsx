@@ -1,5 +1,10 @@
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
+import AcademyCard from '../components/AcademyCard';
+import SettingsModal from '../components/SettingsModal';
+import FeeMsgTemplates from '../components/FeeMsgTemplates';
+import FeesLogCard from '../components/FeesLogCard';
 
 const ADMIN_LINKS = [
   { to: '/admin/sports-batches', label: 'Sports & Batches', icon: '🥋' },
@@ -11,21 +16,21 @@ const ADMIN_LINKS = [
 ];
 
 export default function ProfileTab() {
-  const { user, appUser, isAdmin, logout } = useAuth();
+  const { isAdmin, logout } = useAuth();
+  const [showSettings, setShowSettings] = useState(false);
 
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
-      <div className="section-title" style={{ marginBottom: 14 }}>👤 Profile</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div className="section-title" style={{ marginBottom: 0 }}>👤 Profile</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowSettings(true)}>⚙️ Settings</button>
+          <button className="btn btn-danger btn-sm" onClick={logout}>Logout</button>
+        </div>
+      </div>
 
-      <div className="card" style={{ padding: 16, marginBottom: 14, textAlign: 'center' }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--accent2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700, margin: '0 auto 10px' }}>
-          {(appUser?.name || user?.email || '?').charAt(0).toUpperCase()}
-        </div>
-        <div style={{ fontWeight: 800, fontSize: 16 }}>{appUser?.name || 'Staff Member'}</div>
-        <div style={{ fontSize: 12, color: 'var(--gray)' }}>{user?.email}</div>
-        <div style={{ marginTop: 8, display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: 'var(--card2)', color: 'var(--accent2)' }}>
-          {isAdmin ? 'Admin' : 'Staff'}
-        </div>
+      <div style={{ marginBottom: 14 }}>
+        <AcademyCard />
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
@@ -46,7 +51,19 @@ export default function ProfileTab() {
         </div>
       )}
 
+      {isAdmin && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+          <FeeMsgTemplates />
+        </div>
+      )}
+
+      <div style={{ marginBottom: 14 }}>
+        <FeesLogCard />
+      </div>
+
       <button className="btn btn-outline" style={{ width: '100%' }} onClick={logout}>Sign Out</button>
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

@@ -3,13 +3,25 @@ import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { exportGenericPdf, exportGenericXlsx } from '../lib/exporters';
+import SendMessageModal from '../components/SendMessageModal';
+import { DEFAULT_MSG, DEFAULT_THANK } from '../components/FeeMsgTemplates';
+
+function buildMsg(tpl, ctx) {
+  return tpl
+    .replace(/{name}/g, ctx.name || '')
+    .replace(/{month}/g, ctx.month || '')
+    .replace(/{academy}/g, ctx.academy || '')
+    .replace(/{amount}/g, ctx.amount != null ? String(ctx.amount) : '')
+    .replace(/{method}/g, ctx.method || '');
+}
 
 export default function FeesTab() {
-  const { visibleStudents, visibleSports } = useAcademyData();
+  const { visibleStudents, visibleSports, academy } = useAcademyData();
   const { isAdmin, academyId } = useAuth();
   const [fees, setFees] = useState([]);
   const [sportFilter, setSportFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [sendModal, setSendModal] = useState(null); // { student, month, kind, text }
 
   useEffect(() => {
     (async () => {
@@ -38,6 +50,15 @@ export default function FeesTab() {
   const markPaid = async (feeId) => {
     await supabase.from('fees').update({ status: 'paid', paid_date: new Date().toISOString().slice(0, 10) }).eq('id', feeId);
     setFees(prev => prev.map(f => f.id === feeId ? { ...f, status: 'paid' } : f));
+  };
+
+  const openReminder = (f) => {
+    const text = buildMsg(academy?.msg_template || DEFAULT_MSG, { name: f.student.name, month: f.month, academy: academy?.name });
+    setSendModal({ student: f.student, month: f.month, kind: 'reminder', text });
+  };
+  const openThankYou = (f) => {
+    const text = buildMsg(academy?.thank_template || DEFAULT_THANK, { name: f.student.name, month: f.month, academy: academy?.name, amount: f.amount, method: f.method || 'Cash' });
+    setSendModal({ student: f.student, month: f.month, kind: 'paid', text });
   };
 
   const exportRows = rows.map(r => ({ Student: r.student.name, Roll: r.student.roll_no, Month: r.month, Amount: r.amount, Status: r.status }));
@@ -78,20 +99,35 @@ export default function FeesTab() {
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90 }}>
         {rows.map(f => (
-          <div key={f.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
-            <div style={{ flex: 1 }}>
+          <div key={f.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 120 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{f.student.name}</div>
               <div style={{ fontSize: 12, color: 'var(--gray)' }}>₹{f.amount} · {f.month}</div>
             </div>
             <span className={'badge ' + (f.status === 'paid' ? 'badge-green' : 'badge-red')} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10 }}>
               {f.status}
             </span>
+            {f.status === 'paid' ? (
+              <button className="btn btn-xs btn-outline" onClick={() => openThankYou(f)}>🎉 Thank You</button>
+            ) : (
+              <button className="btn btn-xs btn-outline" onClick={() => openReminder(f)}>💬 Remind</button>
+            )}
             {isAdmin && f.status !== 'paid' && (
               <button className="btn btn-xs btn-primary" onClick={() => markPaid(f.id)}>Mark Paid</button>
             )}
           </div>
         ))}
       </div>
+
+      {sendModal && (
+        <SendMessageModal
+          student={sendModal.student}
+          month={sendModal.month}
+          kind={sendModal.kind}
+          initialText={sendModal.text}
+          onClose={() => setSendModal(null)}
+        />
+      )}
     </div>
   );
 }
