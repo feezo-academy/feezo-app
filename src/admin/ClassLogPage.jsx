@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase } from '../lib/supabaseClient';
+import { parseBatchKey } from '../lib/batchKey';
 import { exportGenericPdf, exportGenericXlsx } from '../lib/exporters';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -85,10 +85,12 @@ export default function ClassLogPage() {
   // Filters
   const [filterSport, setFilterSport] = useState('');
   const [filterBatch, setFilterBatch] = useState('');
+  const [filterStaff, setFilterStaff] = useState('');
   const [viewType, setViewType] = useState('month'); // day | month | year
   const [filterDate, setFilterDate] = useState(todayStr());
   const [filterMonth, setFilterMonth] = useState(todayStr().slice(0, 7));
   const [filterYear, setFilterYear] = useState(String(new Date().getFullYear()));
+  const [defaultsApplied, setDefaultsApplied] = useState(false);
 
   // Add modal
   const [showAdd, setShowAdd] = useState(false);
@@ -141,6 +143,23 @@ export default function ClassLogPage() {
   // Staff-only batch scoping (a staff member with no assigned batches sees nothing)
   const staffBatchNames = useMemo(() => (isAdmin ? null : assignedBatches), [isAdmin, assignedBatches]);
 
+  // Default to the first available sport & batch for the user, once options are ready
+  useEffect(() => {
+    if (defaultsApplied) return;
+    if (!sportOptions.length) return;
+    const sp = sportOptions[0];
+    const batchesForSp = visibleBatches.filter(b => b.sport === sp && (isAdmin || !assignedBatches.length || assignedBatches.includes(b.name)));
+    setFilterSport(sp);
+    setFilterBatch(batchesForSp[0]?.name || '');
+    setDefaultsApplied(true);
+  }, [sportOptions, visibleBatches, isAdmin, assignedBatches, defaultsApplied]);
+
+  // Staff names available to filter by (admin only) — derived from logged entries
+  const staffOptions = useMemo(() => {
+    const names = Array.from(new Set(entries.map(e => e.by).filter(Boolean)));
+    return names.sort();
+  }, [entries]);
+
   const filteredList = useMemo(() => {
     let list = [...entries];
     if (staffBatchNames) {
@@ -148,11 +167,12 @@ export default function ClassLogPage() {
     }
     if (filterSport) list = list.filter(e => (e.sport || '') === filterSport);
     if (filterBatch) list = list.filter(e => e.batch === filterBatch);
+    if (isAdmin && filterStaff) list = list.filter(e => e.by === filterStaff);
     if (viewType === 'day' && filterDate) list = list.filter(e => e.date === filterDate);
     else if (viewType === 'year' && filterYear) list = list.filter(e => (e.date || '').startsWith(filterYear + '-'));
     else if (viewType === 'month' && filterMonth) list = list.filter(e => (e.date || '').startsWith(filterMonth));
     return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }, [entries, staffBatchNames, filterSport, filterBatch, viewType, filterDate, filterMonth, filterYear]);
+  }, [entries, staffBatchNames, filterSport, filterBatch, filterStaff, isAdmin, viewType, filterDate, filterMonth, filterYear]);
 
   const resetForm = () => setForm({ ...emptyForm, date: todayStr() });
 
@@ -231,17 +251,13 @@ export default function ClassLogPage() {
 
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
-      <Link to="/profile" style={{ fontSize: 12, color: 'var(--accent2)', marginBottom: 10, display: 'inline-block' }}>← Back to Profile</Link>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 6, flexWrap: 'wrap' }}>
         <div className="section-title" style={{ marginBottom: 0 }}>📋 Activity Log</div>
-        <button className="btn btn-primary" style={{ fontSize: 12, padding: '7px 12px' }} onClick={openAdd}>+ Add</button>
-      </div>
-
-      {/* Export buttons */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-        <button className="btn" style={{ background: 'var(--gold)', color: '#fff', fontSize: 11, padding: '6px 10px' }} onClick={handleExportPdf}>PDF</button>
-        <button className="btn" style={{ background: '#16a34a', color: '#fff', fontSize: 11, padding: '6px 10px' }} onClick={handleExportXlsx}>XL</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn" style={{ background: 'var(--gold)', color: '#fff', fontSize: 11, padding: '7px 10px' }} onClick={handleExportPdf}>PDF</button>
+          <button className="btn" style={{ background: '#16a34a', color: '#fff', fontSize: 11, padding: '7px 10px' }} onClick={handleExportXlsx}>XL</button>
+          <button className="btn btn-primary" style={{ fontSize: 12, padding: '7px 12px' }} onClick={openAdd}>+ Add</button>
+        </div>
       </div>
 
       {/* Sport / Batch filters */}
@@ -265,6 +281,21 @@ export default function ClassLogPage() {
           {filterBatchOptions.map(b => <option key={b.name} value={b.name}>{b.sport} : {b.batchLabel}</option>)}
         </select>
       </div>
+
+      {/* Staff filter (admin only) */}
+      {isAdmin && (
+        <div style={{ marginBottom: 7 }}>
+          <select
+            className="form-select"
+            style={{ width: '100%', padding: '7px 10px', fontSize: 12 }}
+            value={filterStaff}
+            onChange={(e) => setFilterStaff(e.target.value)}
+          >
+            <option value="">👤 All Staff/Admins</option>
+            {staffOptions.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* Day / Month / Year view */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -310,7 +341,7 @@ export default function ClassLogPage() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold)' }}>{dateDisp}</span>
-                  <span className="badge badge-blue" style={{ fontSize: 10 }}>{e.batch}</span>
+                  <span className="badge badge-blue" style={{ fontSize: 10 }}>{parseBatchKey(e.batch).sport} : {parseBatchKey(e.batch).label}</span>
                 </div>
                 {(inDisp || outDisp) && (
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
