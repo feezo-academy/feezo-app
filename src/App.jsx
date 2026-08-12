@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { AcademyDataProvider, useAcademyData } from './context/AcademyDataContext';
+import useSwipeNav from './hooks/useSwipeNav';
 import LoginScreen from './pages/LoginScreen';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
@@ -25,6 +26,8 @@ import StaffLeavePage from './admin/StaffLeavePage';
 function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { academy } = useAcademyData();
+  const viewportRef = useRef(null);
+  useSwipeNav(viewportRef);
 
   return (
     <div id="app" className="active">
@@ -36,7 +39,7 @@ function AppShell() {
         onToggleNotif={() => {}}
         hasNotif={false}
       />
-      <div className="content pages-viewport" style={{ padding: '10px 14px' }}>
+      <div className="content pages-viewport" ref={viewportRef} style={{ padding: '10px 14px' }}>
         <Routes>
           <Route path="/home" element={<HomeTab />} />
           <Route path="/students" element={<StudentsTab />} />
