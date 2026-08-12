@@ -72,7 +72,8 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       ['2. Name, Sport and Batch are required. Sport/Batch must match ones already in the app.'],
       ['3. Leave RollNo blank to auto-generate (Sport initial + Batch initial + number).'],
       ['4. Dates: YYYY-MM-DD or DD/MM/YYYY.'],
-      ['5. A row matching an existing student (same name, DOB, parent, and a shared contact) updates that student instead of creating a duplicate.'],
+      ['5. A row matching an existing student (shared contact, or same DOB+parent, or same name+sport+batch when no other info is given) updates that student instead of duplicating.'],
+      ['6. If nothing on the row actually differs from the existing student, it is marked "Skip" and left untouched.'],
     ];
     const wsI = XLSX.utils.aoa_to_sheet(instr);
     wsI['!cols'] = [{ wch: 70 }];
@@ -137,14 +138,21 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       const contact2 = get(cols, 'contact2');
       const parent = get(cols, 'parent');
 
-      // Match against existing students: same name + dob + parent + a shared contact number
+      // Match against an existing student. Two ways to match:
+      //  1. Strong signal: shared contact number, or same DOB + parent name.
+      //  2. Fallback: the row has none of that identifying info at all (common in
+      //     lightweight rosters) — in that case, match by name + sport + batch so
+      //     re-importing the same file updates existing rows instead of duplicating them.
       const match = existingStudents.find(s => {
         if ((s.name || '').toLowerCase() !== name.toLowerCase()) return false;
-        if (!s.dob || !dob || s.dob !== dob) return false;
-        if (!s.parent || !parent || s.parent.toLowerCase() !== parent.toLowerCase()) return false;
         const importNums = [contact, contact2].filter(Boolean);
         const existingNums = [s.contact, s.contact2].filter(Boolean);
-        return importNums.some(n => existingNums.includes(n));
+        const contactOverlap = importNums.length > 0 && existingNums.length > 0 && importNums.some(n => existingNums.includes(n));
+        const dobParentMatch = !!(dob && s.dob && parent && s.parent && s.dob === dob && s.parent.toLowerCase() === parent.toLowerCase());
+        if (contactOverlap || dobParentMatch) return true;
+        const noIdentifyingInfo = !contact && !contact2 && !dob && !parent;
+        if (noIdentifyingInfo && s.sport === matchedSport.name && s.batchLabel === matchedBatch.batchLabel) return true;
+        return false;
       });
 
       let rollNo = get(cols, 'rollNo').toUpperCase();
@@ -172,6 +180,27 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         joinDate: excelDateToIso(get(cols, 'joinDate')) || new Date().toISOString().slice(0, 10),
       });
     }
+
+    // Second pass: for matched rows, work out if the import would actually
+    // change anything. If every effective field is identical to what's already
+    // stored, mark it "no changes" so it's shown/handled as a Skip rather than
+    // a pointless Update write.
+    parsed.forEach(r => {
+      if (!r._match) return;
+      const m = r._match;
+      const effRollNo = r.rollNo || m.roll_no || '';
+      const effContact = r.contact || m.contact || '';
+      const effContact2 = r.contact2 || m.contact2 || '';
+      const effAddress = r.address || m.address || '';
+      const effBatchKey = buildBatchKey(r.sport, r.batchLabel);
+      r._noChanges = (
+        effRollNo === (m.roll_no || '') &&
+        effContact === (m.contact || '') &&
+        effContact2 === (m.contact2 || '') &&
+        effAddress === (m.address || '') &&
+        effBatchKey === (m.batch || '')
+      );
+    });
 
     setRows(parsed);
     setRejected(rej);
@@ -202,9 +231,14 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
   };
 
   const inserts = (rows || []).filter(r => !r._match);
-  const updates = (rows || []).filter(r => r._match);
+  const updates = (rows || []).filter(r => r._match && !r._noChanges);
+  const skipped = (rows || []).filter(r => r._match && r._noChanges);
 
   const submit = async () => {
+    const summary = `This will import ${inserts.length + updates.length} student${inserts.length + updates.length === 1 ? '' : 's'}:\n\n` +
+      `• New: ${inserts.length}\n• Update: ${updates.length}\n• Skip (no changes): ${skipped.length}\n• Rejected: ${rejected.length}\n\nContinue?`;
+    if (!window.confirm(summary)) return;
+
     setSubmitting(true);
     if (inserts.length) {
       const payload = inserts.map(r => ({
@@ -248,18 +282,22 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
 
           {rows && (
             <>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>New</div>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: 'var(--green, #16a34a)' }}>{inserts.length}</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <div className="card" style={{ flex: 1, padding: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--gray)' }}>New</div>
+                  <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--green, #16a34a)' }}>{inserts.length}</div>
                 </div>
-                <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>Updates</div>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: 'var(--accent2)' }}>{updates.length}</div>
+                <div className="card" style={{ flex: 1, padding: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--gray)' }}>Update</div>
+                  <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--accent2)' }}>{updates.length}</div>
                 </div>
-                <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>Rejected</div>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: '#dc2626' }}>{rejected.length}</div>
+                <div className="card" style={{ flex: 1, padding: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--gray)' }}>Skip</div>
+                  <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--gray)' }}>{skipped.length}</div>
+                </div>
+                <div className="card" style={{ flex: 1, padding: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--gray)' }}>Rejected</div>
+                  <div style={{ fontWeight: 800, fontSize: 17, color: '#dc2626' }}>{rejected.length}</div>
                 </div>
               </div>
 
@@ -273,8 +311,11 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
                 {rows.map((r, i) => (
                   <div key={i} className="card" style={{ padding: 10, fontSize: 12.5 }}>
                     <strong>{r.name}</strong> · {r.rollNo} · {r.sport}/{r.batchLabel}
-                    <span style={{ float: 'right', fontWeight: 700, color: r._match ? 'var(--accent2)' : 'var(--green, #16a34a)' }}>
-                      {r._match ? 'Update' : 'New'}
+                    <span style={{
+                      float: 'right', fontWeight: 700,
+                      color: r._noChanges ? 'var(--gray)' : r._match ? 'var(--accent2)' : 'var(--green, #16a34a)',
+                    }}>
+                      {r._noChanges ? 'Skip' : r._match ? 'Update' : 'New'}
                     </span>
                   </div>
                 ))}
