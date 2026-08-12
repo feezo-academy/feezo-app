@@ -44,12 +44,12 @@ function SectionLabel({ children }) {
 export default function AddStudentModal({ academyId, sports, batches, student, existingStudents = [], onClose, onSaved }) {
   const isEdit = !!student;
   const [form, setForm] = useState(() => isEdit ? {
-    roll_no: student.roll_no || '', name: student.name || '', dob: student.dob || '',
+    roll_no: student.roll_no || '', name: student.name || '', dob: student.dob || '', gender: student.gender || '',
     parent: student.parent || '', contact: student.contact || '', contact2: student.contact2 || '',
     address: student.address || '', join_date: student.join_date || todayIso(),
     sport: student.sport || sports[0]?.name || '', batchLabel: student.batchLabel || '',
   } : {
-    roll_no: '', name: '', dob: '', parent: '', contact: '', contact2: '', address: '',
+    roll_no: '', name: '', dob: '', gender: '', parent: '', contact: '', contact2: '', address: '',
     join_date: todayIso(), sport: sports[0]?.name || '', batchLabel: '',
   });
   const [saving, setSaving] = useState(false);
@@ -87,6 +87,7 @@ export default function AddStudentModal({ academyId, sports, batches, student, e
       name: form.name,
       dob: form.dob || null,
       age: age ? String(age) : null,
+      gender: form.gender || null,
       parent: form.parent || null,
       contact: normalizePhone(form.contact),
       contact2: form.contact2 ? normalizePhone(form.contact2) : null,
@@ -157,6 +158,16 @@ export default function AddStudentModal({ academyId, sports, batches, student, e
               </Field>
               <Field label="Age">
                 <input className="form-input" value={age} placeholder="Auto" disabled style={{ opacity: .65, cursor: 'not-allowed' }} />
+              </Field>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <Field label="Gender">
+                <select className="form-select" value={form.gender} onChange={set('gender')}>
+                  <option value="">Select</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
               </Field>
             </div>
             <div style={{ marginTop: 10 }}>

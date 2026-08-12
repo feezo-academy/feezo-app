@@ -24,6 +24,19 @@ function Row({ label, value }) {
   );
 }
 
+function ContactRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+      <span style={{ color: 'var(--gray)', fontSize: 12 }}>{label}</span>
+      <a href={`tel:${value}`} onClick={e => e.stopPropagation()}
+        style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: 'var(--accent2)', textDecoration: 'none' }}>
+        📞 {value}
+      </a>
+    </div>
+  );
+}
+
 export default function StudentDetailModal({ student, academyId, isAdmin, canViewContact, onClose, onEdit, onChanged }) {
   const [busy, setBusy] = useState(false);
 
@@ -74,20 +87,27 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
             )}
           </div>
 
+          <div style={{ color: 'var(--gray)', fontSize: 12, marginBottom: 6, marginTop: 4 }}>👤 Personal Info</div>
           <Row label="Age" value={student.dob ? calcAge(student.dob) : student.age} />
           <Row label="Date of Birth" value={student.dob} />
-          <Row label="Contact 1" value={canViewContact ? student.contact : null} />
-          <Row label="Contact 2" value={canViewContact ? student.contact2 : null} />
-          {!canViewContact && <div style={{ fontSize: 11, color: 'var(--gray)', padding: '4px 0' }}>🔒 Contact number hidden. Ask admin to grant access.</div>}
+          <Row label="Gender" value={student.gender} />
           <Row label="Parent / Guardian" value={student.parent} />
+          <ContactRow label="Contact 1" value={canViewContact ? student.contact : null} />
+          <ContactRow label="Contact 2" value={canViewContact ? student.contact2 : null} />
+          {!canViewContact && <div style={{ fontSize: 11, color: 'var(--gray)', padding: '4px 0' }}>🔒 Contact number hidden. Ask admin to grant access.</div>}
           <Row label="School" value={student.address} />
           <Row label="Joined" value={student.join_date} />
 
           <div style={{ padding: '10px 0' }}>
             <div style={{ color: 'var(--gray)', fontSize: 12, marginBottom: 6 }}>🏆 Sports Enrolled</div>
-            <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10 }}>
-              {student.sport} · {student.batchLabel}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, alignSelf: 'flex-start' }}>
+                Sport: {student.sport}
+              </span>
+              <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, alignSelf: 'flex-start' }}>
+                Batch: {student.batchLabel}
+              </span>
+            </div>
           </div>
 
           <AchievementsSection studentId={student.id} academyId={academyId} canEdit={isAdmin} />

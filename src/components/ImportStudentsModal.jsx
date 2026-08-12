@@ -10,6 +10,7 @@ const HEADER_MAP = {
   batch: 'batch', batchname: 'batch', group: 'batch', class: 'batch',
   sport: 'sport', sportname: 'sport', game: 'sport', discipline: 'sport',
   dob: 'dob', dateofbirth: 'dob', birthdate: 'dob', birthday: 'dob',
+  gender: 'gender', sex: 'gender',
   parent: 'parent', parentname: 'parent', guardian: 'parent', guardianname: 'parent',
   contact: 'contact', contact1: 'contact', phone: 'contact', mobile: 'contact', phonenumber: 'contact',
   contact2: 'contact2', phone2: 'contact2', altcontact: 'contact2', alternatecontact: 'contact2',
@@ -38,6 +39,14 @@ function rollPrefix(sport, batch) {
   return (s[0] + b[0]).toUpperCase();
 }
 
+function normalizeGender(val) {
+  const s = String(val || '').trim().toLowerCase();
+  if (!s) return '';
+  if (s === 'm' || s === 'male') return 'Male';
+  if (s === 'f' || s === 'female') return 'Female';
+  return 'Other';
+}
+
 function parseCSVLine(line) {
   const cols = []; let cur = '', inQ = false;
   for (let i = 0; i < line.length; i++) {
@@ -57,14 +66,14 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
   const [submitting, setSubmitting] = useState(false);
 
   const downloadTemplate = () => {
-    const headers = ['Name', 'RollNo', 'Sport', 'Batch', 'DOB', 'Parent', 'Contact', 'Contact2', 'School', 'JoinDate'];
+    const headers = ['Name', 'RollNo', 'Sport', 'Batch', 'DOB', 'Gender', 'Parent', 'Contact', 'Contact2', 'School', 'JoinDate'];
     const today = new Date().toISOString().slice(0, 10);
     const firstSport = sports[0]?.name || 'Sport A';
     const firstBatch = batches.find(b => b.sport === firstSport)?.batchLabel || 'Batch 1';
-    const example1 = ['Arjun Kumar', '', firstSport, firstBatch, '2013-06-15', 'Ramesh Kumar', '9876543210', '', 'ABC School', today];
+    const example1 = ['Arjun Kumar', '', firstSport, firstBatch, '2013-06-15', 'Male', 'Ramesh Kumar', '9876543210', '', 'ABC School', today];
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([headers, example1]);
-    ws['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }];
+    ws['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Students');
     const instr = [
       ['HOW TO USE THIS TEMPLATE'], [''],
@@ -72,8 +81,9 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       ['2. Name, Sport and Batch are required. Sport/Batch must match ones already in the app.'],
       ['3. Leave RollNo blank to auto-generate (Sport initial + Batch initial + number).'],
       ['4. Dates: YYYY-MM-DD or DD/MM/YYYY.'],
-      ['5. A row matching an existing student (shared contact, or same DOB+parent, or same name+sport+batch when no other info is given) updates that student instead of duplicating.'],
-      ['6. If nothing on the row actually differs from the existing student, it is marked "Skip" and left untouched.'],
+      ['5. Gender: Male, Female, or Other (M/F also accepted).'],
+      ['6. A row matching an existing student (shared contact, or same DOB+parent, or same name+sport+batch when no other info is given) updates that student instead of duplicating.'],
+      ['7. If nothing on the row actually differs from the existing student, it is marked "Skip" and left untouched.'],
     ];
     const wsI = XLSX.utils.aoa_to_sheet(instr);
     wsI['!cols'] = [{ wch: 70 }];
@@ -82,15 +92,15 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
   };
 
   const downloadRejected = () => {
-    const headers = ['Name', 'RollNo', 'Sport', 'Batch', 'DOB', 'Parent', 'Contact', 'Contact2', 'School', 'JoinDate', 'Reason'];
+    const headers = ['Name', 'RollNo', 'Sport', 'Batch', 'DOB', 'Gender', 'Parent', 'Contact', 'Contact2', 'School', 'JoinDate', 'Reason'];
     const rowsOut = rejected.map(r => [
       r.raw?.Name || '', r.raw?.RollNo || '', r.raw?.Sport || '', r.raw?.Batch || '',
-      r.raw?.DOB || '', r.raw?.Parent || '', r.raw?.Contact || '', r.raw?.Contact2 || '',
+      r.raw?.DOB || '', r.raw?.Gender || '', r.raw?.Parent || '', r.raw?.Contact || '', r.raw?.Contact2 || '',
       r.raw?.School || '', r.raw?.JoinDate || '', r.reason,
     ]);
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rowsOut]);
-    ws['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }, { wch: 34 }];
+    ws['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }, { wch: 34 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Rejected');
     XLSX.writeFile(wb, 'Rejected_Students.xlsx');
   };
@@ -118,7 +128,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       const batchRaw = get(cols, 'batch');
       const raw = {
         Name: name, RollNo: get(cols, 'rollNo'), Sport: sportRaw, Batch: batchRaw,
-        DOB: get(cols, 'dob'), Parent: get(cols, 'parent'), Contact: get(cols, 'contact'),
+        DOB: get(cols, 'dob'), Gender: get(cols, 'gender'), Parent: get(cols, 'parent'), Contact: get(cols, 'contact'),
         Contact2: get(cols, 'contact2'), School: get(cols, 'address'), JoinDate: get(cols, 'joinDate'),
       };
       // Silently skip fully-blank rows — spreadsheet apps often leave empty
@@ -176,7 +186,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       parsed.push({
         _match: match || null,
         name, rollNo, sport: matchedSport.name, batchLabel: matchedBatch.batchLabel,
-        dob, parent, contact, contact2, address: get(cols, 'address'),
+        dob, gender: normalizeGender(get(cols, 'gender')), parent, contact, contact2, address: get(cols, 'address'),
         joinDate: excelDateToIso(get(cols, 'joinDate')) || new Date().toISOString().slice(0, 10),
       });
     }
@@ -192,12 +202,14 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       const effContact = r.contact || m.contact || '';
       const effContact2 = r.contact2 || m.contact2 || '';
       const effAddress = r.address || m.address || '';
+      const effGender = r.gender || m.gender || '';
       const effBatchKey = buildBatchKey(r.sport, r.batchLabel);
       r._noChanges = (
         effRollNo === (m.roll_no || '') &&
         effContact === (m.contact || '') &&
         effContact2 === (m.contact2 || '') &&
         effAddress === (m.address || '') &&
+        effGender === (m.gender || '') &&
         effBatchKey === (m.batch || '')
       );
     });
@@ -243,7 +255,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
     if (inserts.length) {
       const payload = inserts.map(r => ({
         academy_id: academyId, name: r.name, roll_no: r.rollNo,
-        batch: buildBatchKey(r.sport, r.batchLabel), dob: r.dob || null, parent: r.parent || null,
+        batch: buildBatchKey(r.sport, r.batchLabel), dob: r.dob || null, gender: r.gender || null, parent: r.parent || null,
         contact: r.contact || null, contact2: r.contact2 || null, address: r.address || null,
         join_date: r.joinDate,
       }));
@@ -254,7 +266,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         roll_no: r.rollNo || r._match.roll_no,
         batch: buildBatchKey(r.sport, r.batchLabel),
         contact: r.contact || r._match.contact, contact2: r.contact2 || r._match.contact2,
-        address: r.address || r._match.address,
+        address: r.address || r._match.address, gender: r.gender || r._match.gender,
       }).eq('id', r._match.id);
     }
     setSubmitting(false);
@@ -310,7 +322,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
               <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {rows.map((r, i) => (
                   <div key={i} className="card" style={{ padding: 10, fontSize: 12.5 }}>
-                    <strong>{r.name}</strong> · {r.rollNo} · {r.sport}/{r.batchLabel}
+                    <strong>{r.name}</strong> · {r.rollNo} · {r.sport}/{r.batchLabel}{r.gender ? ` · ${r.gender}` : ''}
                     <span style={{
                       float: 'right', fontWeight: 700,
                       color: r._noChanges ? 'var(--gray)' : r._match ? 'var(--accent2)' : 'var(--green, #16a34a)',
