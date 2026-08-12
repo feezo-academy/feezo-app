@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { AcademyDataProvider } from './context/AcademyDataContext';
 import LoginScreen from './pages/LoginScreen';
 import TopBar from './components/TopBar';
+import SideDrawer from './components/SideDrawer';
 import BottomNav from './components/BottomNav';
 import HomeTab from './tabs/HomeTab';
 import StudentsTab from './tabs/StudentsTab';
@@ -32,6 +33,7 @@ function AppShell() {
         onToggleNotif={() => {}}
         hasNotif={false}
       />
+      <SideDrawer open={menuOpen} onClose={() => setMenuOpen(false)} academyName="Academy" />
       <div className="content pages-viewport" style={{ padding: '10px 14px' }}>
         <Routes>
           <Route path="/home" element={<HomeTab />} />
