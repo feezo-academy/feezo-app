@@ -17,6 +17,7 @@ import CoursesPage from './admin/CoursesPage';
 import SchedulesPage from './admin/SchedulesPage';
 import PerformancePage from './admin/PerformancePage';
 import ActivityPage from './admin/ActivityPage';
+import ClassLogPage from './admin/ClassLogPage';
 import LeaveCountPage from './admin/LeaveCountPage';
 
 function AppShell() {
@@ -45,6 +46,7 @@ function AppShell() {
           <Route path="/admin/schedules" element={<SchedulesPage />} />
           <Route path="/admin/performance" element={<PerformancePage />} />
           <Route path="/admin/activity" element={<ActivityPage />} />
+          <Route path="/admin/class-log" element={<ClassLogPage />} />
           <Route path="/admin/leave-count" element={<LeaveCountPage />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
