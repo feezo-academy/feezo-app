@@ -604,7 +604,7 @@ export default function AttendanceTab() {
         </div>
       )}
 
-      <div ref={listScrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 90, marginTop: 4 }} onScroll={handleScroll}>
+      <div ref={listScrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 24, marginTop: 4, overscrollBehavior: 'contain' }} onScroll={handleScroll}>
         {loading && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 20 }}>Loading…</div>}
 
         {!loading && viewMode === 'day' && isFutureDate && (
