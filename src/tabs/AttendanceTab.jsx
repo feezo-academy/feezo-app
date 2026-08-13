@@ -39,7 +39,6 @@ export default function AttendanceTab() {
   const [date, setDate] = useState(todayStr());
   const [viewMode, setViewMode] = useState('day'); // 'day' | 'month' | 'year'
   const [panelOpen, setPanelOpen] = useState(false); // date picker sub-panel: collapsed by default
-  const [filtersVisible, setFiltersVisible] = useState(true); // sport/batch/status/sort row only — hides on scroll-down
   const [search, setSearch] = useState('');
   const [sportFilter, setSportFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
@@ -55,7 +54,6 @@ export default function AttendanceTab() {
   const [showImport, setShowImport] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [showScrollArrow, setShowScrollArrow] = useState(false);
-  const lastScrollTop = useRef(0);
   const listScrollRef = useRef(null);
   // Tracks which date `dayStatusMap` was last built for, so a same-date
   // refetch can only ever ADD a confirmed-closed sport, never remove one —
@@ -252,7 +250,14 @@ export default function AttendanceTab() {
     const isLate = !!lateMap[student.id];
 
     if (done) {
-      if (existing === 'A') { window.alert('Register is closed for this day — already marked, cannot change.'); return; }
+      if (existing === 'A') {
+        if (status === 'A') return; // already absent, no-op
+        const ok = window.confirm(`Register is closed. Change ${student.name} from Absent → latecomer Present?`);
+        if (!ok) return;
+        applyStatus(student, 'P', true);
+        logAttendance(`${student.name} → latecomer Present from Absent (${sp}) on ${date}`);
+        return;
+      }
       if (existing === 'P' && !isLate) { window.alert('Register is closed for this day — already marked, cannot change.'); return; }
       if (existing === 'P' && isLate && status === 'A') {
         const ok = window.confirm(`Change ${student.name} from Latecomer → Absent (${sp}) on ${date}?`);
@@ -457,13 +462,6 @@ export default function AttendanceTab() {
 
   const handleScroll = (e) => {
     const el = e.currentTarget;
-    const top = el.scrollTop;
-    const delta = top - lastScrollTop.current;
-    const THRESHOLD = 6; // ignore tiny/jitter scrolls
-    if (top <= 4) setFiltersVisible(true);           // always show at very top
-    else if (delta > THRESHOLD) setFiltersVisible(false); // scrolling down → hide
-    else if (delta < -THRESHOLD) setFiltersVisible(true); // scrolling up → show
-    lastScrollTop.current = top;
     updateScrollArrow(el);
   };
 
@@ -493,29 +491,29 @@ export default function AttendanceTab() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>🗓️ Attendance</div>
         <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button className="btn btn-gold btn-sm" onClick={() => doExport('pdf')}>PDF</button>
-          <button className="btn btn-success btn-sm" onClick={() => doExport('xlsx')}>XL</button>
+          <button className="btn btn-gold btn-sm" style={{ padding: '5px 9px', fontSize: 11 }} onClick={() => doExport('pdf')}>PDF</button>
+          <button className="btn btn-success btn-sm" style={{ padding: '5px 9px', fontSize: 11 }} onClick={() => doExport('xlsx')}>XL</button>
           {isAdmin && <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>}
         </div>
       </div>
 
-      {/* Search box — always visible, never hides on scroll */}
-      <div className="search-wrap" style={{ marginBottom: 7 }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-        <input type="text" className="search-input" placeholder="Search by name or roll number…"
-          value={search} onChange={e => setSearch(e.target.value)} />
-        {search && <button type="button" className="search-clear-btn" onClick={() => setSearch('')} aria-label="Clear search">✕</button>}
-      </div>
+      {/* Date navigator — now also houses the Sport/Batch/Status/Sort filters.
+          Always visible, doesn't hide on scroll. Sits above the search box. */}
+      <div className="card" style={{ padding: 10, marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+          onClick={() => setPanelOpen(p => !p)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontWeight: 700, fontSize: 13.5 }}>🗓️ {viewMode === 'year' ? year : viewMode === 'month' ? `${MONTHS[month]} ${year}` : dateLabel}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: 'var(--accent2)', color: '#fff', textTransform: 'capitalize' }}>{viewMode}</span>
+          </div>
+          <button className="arrow-btn" style={{ width: 24, height: 24, fontSize: 11 }}
+            onClick={(e) => { e.stopPropagation(); setPanelOpen(p => !p); }}>
+            {panelOpen ? '▲' : '▼'}
+          </button>
+        </div>
 
-      {/* Sport | Batch | Status | Sort row — collapses on scroll-down, reappears on scroll-up */}
-      <div style={{
-        overflow: 'hidden',
-        maxHeight: filtersVisible ? 60 : 0,
-        opacity: filtersVisible ? 1 : 0,
-        marginBottom: filtersVisible ? 7 : 0,
-        transition: 'max-height .25s ease, opacity .2s ease, margin-bottom .25s ease',
-      }}>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+        {/* Sport | Batch | Status | Sort — always visible within the card */}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap', marginTop: 9 }}>
           <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
             value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter(''); }}>
             <option value="">Sports</option>
@@ -544,21 +542,6 @@ export default function AttendanceTab() {
             <option value="absent_first">❌ Absent</option>
             <option value="unmarked_first">⏳ Unmarked</option>
           </select>
-        </div>
-      </div>
-
-      {/* Date navigator — collapsible via tap, always visible, doesn't hide on scroll */}
-      <div className="card" style={{ padding: 10, marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-          onClick={() => setPanelOpen(p => !p)}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontWeight: 700, fontSize: 13.5 }}>🗓️ {viewMode === 'year' ? year : viewMode === 'month' ? `${MONTHS[month]} ${year}` : dateLabel}</span>
-            <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: 'var(--accent2)', color: '#fff', textTransform: 'capitalize' }}>{viewMode}</span>
-          </div>
-          <button className="arrow-btn" style={{ width: 24, height: 24, fontSize: 11 }}
-            onClick={(e) => { e.stopPropagation(); setPanelOpen(p => !p); }}>
-            {panelOpen ? '▲' : '▼'}
-          </button>
         </div>
 
         {panelOpen && (
@@ -596,6 +579,14 @@ export default function AttendanceTab() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Search box — always visible, never hides on scroll */}
+      <div className="search-wrap" style={{ marginBottom: 7 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+        <input type="text" className="search-input" placeholder="Search by name or roll number…"
+          value={search} onChange={e => setSearch(e.target.value)} />
+        {search && <button type="button" className="search-clear-btn" onClick={() => setSearch('')} aria-label="Clear search">✕</button>}
       </div>
 
       {/* Summary row — always visible, doesn't hide on scroll */}
@@ -763,6 +754,7 @@ export default function AttendanceTab() {
           existingStudents={visibleStudents}
           sportFilter={sportFilter}
           batchFilter={batchFilter}
+          markedBy={markedBy}
           onClose={() => setShowImport(false)}
           onImported={() => { refresh(); setReloadKey(k => k + 1); }}
         />
