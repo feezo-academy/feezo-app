@@ -9,7 +9,7 @@ export default function SportsBatchesPage() {
   const { sports, batches, students, refresh } = useAcademyData();
   const { academyId } = useAuth();
   const [newSport, setNewSport] = useState('');
-  const [expandedId, setExpandedId] = useState(null); // sport currently expanded, or null
+  const [expandedIds, setExpandedIds] = useState(() => new Set()); // sports currently expanded — more than one can be open
 
   const [editingSportId, setEditingSportId] = useState(null);
   const [editSportValue, setEditSportValue] = useState('');
@@ -18,18 +18,23 @@ export default function SportsBatchesPage() {
   const [editBatchValue, setEditBatchValue] = useState('');
 
   const [newBatchName, setNewBatchName] = useState('');
+  const [error, setError] = useState('');
 
   const addSport = async () => {
     if (!newSport.trim()) return;
-    await supabase.from('sports').insert({ name: newSport.trim(), academy_id: academyId });
+    const { error: err } = await supabase.from('sports').insert({ name: newSport.trim(), academy_id: academyId });
+    if (err) { setError(err.message); return; }
+    setError('');
     setNewSport('');
     refresh();
   };
 
   const deleteSport = async (id) => {
     if (!confirm('Delete this sport? Related batches remain but will be orphaned.')) return;
-    await supabase.from('sports').delete().eq('id', id);
-    if (expandedId === id) setExpandedId(null);
+    const { error: err } = await supabase.from('sports').delete().eq('id', id);
+    if (err) { setError(err.message); return; }
+    setError('');
+    setExpandedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
     refresh();
   };
 
@@ -42,31 +47,39 @@ export default function SportsBatchesPage() {
     const affectedBatches = batches.filter(b => b.sport === s.name);
     const affectedStudents = students.filter(st => st.sport === s.name);
 
-    await supabase.from('sports').update({ name }).eq('id', s.id);
-    // Batches (and students' batch assignment) store their sport as a
-    // "Sport::BatchName" composite key, not a separate column — so renaming
-    // a sport means rebuilding that key for every batch/student under it,
-    // or they'd silently detach from their (renamed) sport and batch.
+    const { error: err } = await supabase.from('sports').update({ name }).eq('id', s.id);
+    if (err) { setError(err.message); return; }
+    // Batches (and students' batch assignment) store their sport only as
+    // part of a "Sport::BatchName" composite key in `name` — there's no
+    // separate `sport` column — so renaming a sport means rebuilding that
+    // key for every batch/student under it, or they'd silently detach.
     await Promise.all(affectedBatches.map(b =>
-      supabase.from('batches').update({ name: buildBatchKey(name, b.batchLabel), sport: name }).eq('id', b.id)
+      supabase.from('batches').update({ name: buildBatchKey(name, b.batchLabel) }).eq('id', b.id)
     ));
     await Promise.all(affectedStudents.map(st =>
       supabase.from('students').update({ batch: buildBatchKey(name, st.batchLabel) }).eq('id', st.id)
     ));
 
+    setError('');
     cancelEditSport();
     refresh();
   };
 
   const toggleExpand = (id) => {
-    setExpandedId(cur => (cur === id ? null : id));
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
     setNewBatchName('');
     setEditingBatchId(null);
   };
 
   const addBatch = async (sport) => {
     if (!newBatchName.trim()) return;
-    await supabase.from('batches').insert({ name: buildBatchKey(sport.name, newBatchName.trim()), sport: sport.name, academy_id: academyId });
+    const { error: err } = await supabase.from('batches').insert({ name: buildBatchKey(sport.name, newBatchName.trim()), academy_id: academyId });
+    if (err) { setError(err.message); return; }
+    setError('');
     setNewBatchName('');
     refresh();
   };
@@ -80,18 +93,22 @@ export default function SportsBatchesPage() {
     const newName = buildBatchKey(sport.name, label);
     const affectedStudents = students.filter(st => st.batch === b.name);
 
-    await supabase.from('batches').update({ name: newName }).eq('id', b.id);
+    const { error: err } = await supabase.from('batches').update({ name: newName }).eq('id', b.id);
+    if (err) { setError(err.message); return; }
     await Promise.all(affectedStudents.map(st =>
       supabase.from('students').update({ batch: newName }).eq('id', st.id)
     ));
 
+    setError('');
     cancelEditBatch();
     refresh();
   };
 
   const deleteBatch = async (id) => {
     if (!confirm('Delete this batch?')) return;
-    await supabase.from('batches').delete().eq('id', id);
+    const { error: err } = await supabase.from('batches').delete().eq('id', id);
+    if (err) { setError(err.message); return; }
+    setError('');
     refresh();
   };
 
@@ -100,13 +117,19 @@ export default function SportsBatchesPage() {
       <Link to="/profile" style={{ fontSize: 12, color: 'var(--accent2)', marginBottom: 10, display: 'inline-block' }}>← Back to Profile</Link>
       <div className="section-title" style={{ marginBottom: 10 }}>🥋 Sports & Batches</div>
 
+      {error && (
+        <div style={{ fontSize: 12.5, color: '#dc2626', background: 'rgba(220,38,38,.08)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, flexShrink: 0 }}>
+          ⚠️ {error}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexShrink: 0 }}>
         <input className="form-input" placeholder="New sport name" value={newSport} onChange={e => setNewSport(e.target.value)} />
         <button className="btn btn-primary btn-sm" onClick={addSport}>Add</button>
       </div>
 
       {sports.map(s => {
-        const isExpanded = expandedId === s.id;
+        const isExpanded = expandedIds.has(s.id);
         const isEditingSport = editingSportId === s.id;
         const sportBatches = batches.filter(b => b.sport === s.name);
 
