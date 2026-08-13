@@ -10,6 +10,10 @@ const HEADER_MAP = {
   batch: 'batch', batchname: 'batch', group: 'batch', class: 'batch',
 };
 const normHeader = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 // A date-column header looks like DD/MM/YYYY (also accepts DD-MM-YYYY).
 const DATE_HEADER_RE = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/;
@@ -36,7 +40,7 @@ function parseCSVLine(line) {
   return cols;
 }
 
-export default function ImportAttendanceModal({ academyId, existingStudents, sportFilter, batchFilter, onClose, onImported }) {
+export default function ImportAttendanceModal({ academyId, existingStudents, sportFilter, batchFilter, markedBy, onClose, onImported }) {
   const [preview, setPreview] = useState(null); // { dateColumns, studentRows, markCount, rejected }
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -101,6 +105,16 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
       setError('No date columns found. Headers must be in DD/MM/YYYY format.'); return;
     }
 
+    // Attendance can't be marked for future dates — same rule as the manual
+    // P/A buttons. Drop those columns from marking entirely rather than
+    // rejecting the whole file; surface which dates got skipped in the preview.
+    const today = todayIso();
+    const futureDateCols = dateCols.filter(dc => dc.iso > today);
+    const validDateCols = dateCols.filter(dc => dc.iso <= today);
+    if (!validDateCols.length) {
+      setError('All date columns are in the future — attendance cannot be marked for future dates.'); return;
+    }
+
     const get = (cols, key) => (colMap[key] !== undefined ? (cols[colMap[key]] || '').trim() : '');
     const studentRows = []; // { student, marks: [{iso, status}] }
     const rejected = [];
@@ -135,16 +149,16 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
       }
 
       const marks = [];
-      dateCols.forEach(dc => {
+      validDateCols.forEach(dc => {
         const val = (cols[dc.index] || '').trim().toUpperCase();
-        if (val === 'P') { marks.push({ iso: dc.iso, status: 'present' }); markCount++; }
-        else if (val === 'A') { marks.push({ iso: dc.iso, status: 'absent' }); markCount++; }
+        if (val === 'P') { marks.push({ iso: dc.iso, status: 'P' }); markCount++; }
+        else if (val === 'A') { marks.push({ iso: dc.iso, status: 'A' }); markCount++; }
         // blank or anything else -> skip that cell
       });
       if (marks.length) studentRows.push({ student, marks });
     }
 
-    setPreview({ dateColumns: dateCols.map(d => d.iso), studentRows, markCount, rejected });
+    setPreview({ dateColumns: validDateCols.map(d => d.iso), futureDatesSkipped: futureDateCols.map(d => d.iso), studentRows, markCount, rejected });
     setError('');
   };
 
@@ -179,15 +193,28 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
       marks.forEach(m => {
         payload.push({
           academy_id: academyId, student_id: student.id, date: m.iso,
-          status: m.status, sport: student.sport,
+          status: m.status, sport: student.sport, marked_by: markedBy || 'Import',
         });
       });
     });
     // Upsert in chunks to stay well under request size limits.
+    let hadError = false;
     for (let i = 0; i < payload.length; i += 500) {
-      await supabase.from('attendance').upsert(payload.slice(i, i + 500), { onConflict: 'academy_id,student_id,date' });
+      const { error } = await supabase.from('attendance').upsert(payload.slice(i, i + 500), { onConflict: 'academy_id,student_id,date' });
+      if (error) hadError = true;
     }
+    // Best-effort activity log entry, same shape as AttendanceTab's logAttendance —
+    // never blocks the UI if it fails.
+    try {
+      await supabase.from('audit_log').insert({
+        academy_id: academyId,
+        actor_name: markedBy || 'Import',
+        action: `Imported ${preview.markCount} attendance mark(s) across ${preview.studentRows.length} student(s)`,
+        description: `Imported ${preview.markCount} attendance mark(s) across ${preview.studentRows.length} student(s)`,
+      });
+    } catch { /* audit log is best-effort */ }
     setSubmitting(false);
+    if (hadError) { setError('Some rows failed to save — please check and re-import if needed.'); setSubmitting(false); return; }
     onImported();
     onClose();
   };
@@ -211,6 +238,7 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
             <div>• Add one column per date to mark, with the header as <strong>DD/MM/YYYY</strong> (e.g. 15/06/2025).</div>
             <div>• Fill each date column with <strong>P</strong> for Present, <strong>A</strong> for Absent. Leave a cell blank to skip that student for that date.</div>
             <div>• First row treated as header and skipped.</div>
+            <div>• Future-dated columns are skipped automatically — attendance can't be marked ahead of time.</div>
           </div>
 
           <button className="btn btn-outline btn-sm" onClick={downloadTemplate}>📥 Download Excel Template</button>
@@ -224,6 +252,11 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
 
           {preview && (
             <>
+              {preview.futureDatesSkipped?.length > 0 && (
+                <div style={{ fontSize: 12, color: '#fbbf24', background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.35)', borderRadius: 8, padding: '8px 10px' }}>
+                  🔒 Future dates are not allowed — {preview.futureDatesSkipped.length} column(s) skipped: {preview.futureDatesSkipped.map(formatDDMMYYYY).join(', ')}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
                   <div style={{ fontSize: 11, color: 'var(--gray)' }}>Students</div>
