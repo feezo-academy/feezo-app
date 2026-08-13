@@ -139,6 +139,7 @@ export default function AttendanceTab() {
     try {
       await supabase.from('audit_log').insert({
         academy_id: academyId,
+        actor_id: appUser?.id || null,
         actor_name: markedBy,
         action: message,
         description: message,

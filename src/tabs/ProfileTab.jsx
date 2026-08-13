@@ -8,9 +8,8 @@ import FeesLogModal from '../components/FeesLogModal';
 
 const ADMIN_LINKS = [
   { to: '/admin/sports-batches', label: 'Sports & Batches', icon: '🥋' },
-  { to: '/admin/users', label: 'Staff Users', icon: '👤' },
+  { to: '/admin/users', label: 'User Management', icon: '👤' },
   { to: '/admin/courses', label: 'Courses', icon: '📚' },
-  { to: '/admin/performance', label: 'Performance', icon: '🏆' },
   { to: '/admin/activity', label: 'Activity Log', icon: '📋' },
 ];
 

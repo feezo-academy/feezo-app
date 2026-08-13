@@ -98,7 +98,7 @@ export default function EnquiryTab() {
   const logEnquiry = async (message) => {
     try {
       await supabase.from('audit_log').insert({
-        academy_id: academyId, actor_name: createdByName, action: message, description: message,
+        academy_id: academyId, actor_id: appUser?.id || null, actor_name: createdByName, action: message, description: message,
       });
     } catch { /* best-effort */ }
   };
