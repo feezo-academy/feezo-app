@@ -447,7 +447,11 @@ export default function AttendanceTab() {
   const updateScrollArrow = (el) => {
     if (!el) return;
     const scrollable = el.scrollHeight - el.clientHeight > 8;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+    // Generous tolerance (~one row) so the arrow reliably disappears before
+    // the last item — it was staying visible a few px short of true bottom
+    // on real devices and physically blocking taps on whatever sits there
+    // (e.g. the Done button), since it's a fixed-position overlay.
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 48;
     setShowScrollArrow(scrollable && !atBottom);
   };
 
@@ -622,7 +626,7 @@ export default function AttendanceTab() {
         </div>
       )}
 
-      <div ref={listScrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 24, marginTop: 4, overscrollBehavior: 'contain' }} onScroll={handleScroll}>
+      <div ref={listScrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingBottom: 60, marginTop: 4, overscrollBehavior: 'contain' }} onScroll={handleScroll}>
         {loading && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 20 }}>Loading…</div>}
 
         {!loading && viewMode === 'day' && isFutureDate && (
