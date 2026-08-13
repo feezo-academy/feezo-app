@@ -57,6 +57,11 @@ export default function AttendanceTab() {
   const [showScrollArrow, setShowScrollArrow] = useState(false);
   const lastScrollTop = useRef(0);
   const listScrollRef = useRef(null);
+  // Tracks which date `dayStatusMap` was last built for, so a same-date
+  // refetch can only ever ADD a confirmed-closed sport, never remove one —
+  // closing a register is one-way, so a flaky read should never silently
+  // reopen it. Switching to a different date still resets it properly.
+  const dayStatusDateRef = useRef(date);
 
   const dateObj = new Date(date + 'T00:00:00');
   const year = dateObj.getFullYear();
@@ -139,7 +144,6 @@ export default function AttendanceTab() {
     try {
       await supabase.from('audit_log').insert({
         academy_id: academyId,
-        actor_id: appUser?.id || null,
         actor_name: markedBy,
         action: message,
         description: message,
@@ -166,13 +170,26 @@ export default function AttendanceTab() {
         // Falls back to a single whole-day flag (applies to every sport) if
         // that column hasn't been migrated in yet — matches the write-side
         // fallback in markAllDone, so close-state stays consistent either way.
+        // Merged (never downgraded) against the previous same-date state —
+        // closing a register is one-way, so a flaky read must never silently
+        // reopen one we already confirmed closed locally.
+        const applyDayStatus = (dmap) => {
+          const isNewDate = dayStatusDateRef.current !== date;
+          dayStatusDateRef.current = date;
+          setDayStatusMap(prev => {
+            const base = isNewDate ? {} : prev;
+            const merged = { ...base };
+            Object.keys(dmap).forEach(k => { merged[k] = merged[k] || dmap[k]; });
+            return merged;
+          });
+        };
         try {
           const { data: statusRows, error: statusErr } = await supabase.from('attendance_day_status')
             .select('sport,completed').eq('academy_id', academyId).eq('date', date);
           if (statusErr) throw statusErr;
           const dmap = {};
           (statusRows || []).forEach(r => { dmap[r.sport] = !!r.completed; });
-          setDayStatusMap(dmap);
+          applyDayStatus(dmap);
         } catch {
           try {
             const { data: legacyRows } = await supabase.from('attendance_day_status')
@@ -180,9 +197,9 @@ export default function AttendanceTab() {
             const wholeDayDone = (legacyRows || []).some(r => r.completed);
             const dmap = {};
             if (wholeDayDone) visibleSports.forEach(sp => { dmap[sp.name] = true; });
-            setDayStatusMap(dmap);
+            applyDayStatus(dmap);
           } catch {
-            setDayStatusMap({});
+            applyDayStatus({});
           }
         }
       } else if (viewMode === 'month') {
