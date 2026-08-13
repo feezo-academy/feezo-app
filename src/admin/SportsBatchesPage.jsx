@@ -100,7 +100,7 @@ export default function SportsBatchesPage() {
       <Link to="/profile" style={{ fontSize: 12, color: 'var(--accent2)', marginBottom: 10, display: 'inline-block' }}>← Back to Profile</Link>
       <div className="section-title" style={{ marginBottom: 10 }}>🥋 Sports & Batches</div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexShrink: 0 }}>
         <input className="form-input" placeholder="New sport name" value={newSport} onChange={e => setNewSport(e.target.value)} />
         <button className="btn btn-primary btn-sm" onClick={addSport}>Add</button>
       </div>
@@ -111,7 +111,7 @@ export default function SportsBatchesPage() {
         const sportBatches = batches.filter(b => b.sport === s.name);
 
         return (
-          <div key={s.id} className="card" style={{ padding: 0, marginBottom: 8, overflow: 'hidden' }}>
+          <div key={s.id} className="card" style={{ padding: 0, marginBottom: 8, overflow: 'hidden', flexShrink: 0 }}>
             <div style={{ padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
               {isEditingSport ? (
                 <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center' }}>
@@ -157,6 +157,7 @@ export default function SportsBatchesPage() {
                 {sportBatches.length === 0 && (
                   <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: '8px 0' }}>No batches yet for {s.name}.</div>
                 )}
+                <div style={{ maxHeight: 260, overflowY: 'auto' }}>
                 {sportBatches.map(b => {
                   const isEditingBatch = editingBatchId === b.id;
                   return (
@@ -184,6 +185,7 @@ export default function SportsBatchesPage() {
                     </div>
                   );
                 })}
+                </div>
               </div>
             )}
           </div>
