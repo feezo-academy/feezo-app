@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase } from '../lib/supabaseClient';
 
-const emptyForm = () => ({ name: '', email: '', password: '', assigned_sports: [], assigned_batches: [], can_view_contact: false });
+const emptyForm = () => ({ name: '', email: '', password: '', confirmPassword: '', assigned_sports: [], assigned_batches: [], can_view_contact: false });
 
 export default function UsersPage() {
   const { academyId } = useAuth();
@@ -68,6 +68,7 @@ export default function UsersPage() {
         if (err) throw err;
       } else {
         if (!form.password || form.password.length < 6) throw new Error('Password must be at least 6 characters.');
+        if (form.password !== form.confirmPassword) throw new Error('Passwords do not match.');
         // Creating a new login requires the service-role key, which can't run
         // in the browser — the 'create-user' Edge Function does the actual
         // Supabase Auth signup + app_users row server-side.
@@ -100,8 +101,14 @@ export default function UsersPage() {
   const removeUser = async (u) => {
     if (!confirm(`Permanently delete "${u.name || u.email}"? Their login and access will be removed. This cannot be undone.`)) return;
     try {
-      const { data, error: err } = await supabase.functions.invoke('delete-user', { body: { uid: u.id, id: u.id, email: u.email } });
-      if (err) throw new Error(err.message || 'Delete failed');
+      const { data, error: err } = await supabase.functions.invoke('delete-user', { body: { uid: u.id, id: u.id, login_id: u.id, email: u.email } });
+      if (err) {
+        let msg = err.message || 'Delete failed';
+        if (err.context && typeof err.context.json === 'function') {
+          try { const body = await err.context.json(); if (body?.error) msg = body.error; } catch { /* not JSON */ }
+        }
+        throw new Error(msg);
+      }
       if (data?.error) throw new Error(data.error);
       load();
       if (data?.warning) alert(data.warning);
@@ -192,7 +199,20 @@ export default function UsersPage() {
               <input className="form-input" placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               <input className="form-input" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!editingId} />
               {!editingId && (
-                <input className="form-input" type="password" placeholder="Password (min 6 characters)" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+                <>
+                  <input className="form-input" type="password" placeholder="Password (min 6 characters)" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+                  <input
+                    className="form-input"
+                    type="password"
+                    placeholder="Re-enter password"
+                    value={form.confirmPassword}
+                    onChange={e => setForm({ ...form, confirmPassword: e.target.value })}
+                    style={form.confirmPassword && form.confirmPassword !== form.password ? { borderColor: '#dc2626' } : undefined}
+                  />
+                  {form.confirmPassword && form.confirmPassword !== form.password && (
+                    <div style={{ fontSize: 11.5, color: '#dc2626', marginTop: -4 }}>Passwords don't match yet.</div>
+                  )}
+                </>
               )}
               <div style={{ fontSize: 12, fontWeight: 600 }}>Assigned Sports</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
