@@ -132,6 +132,7 @@ export default function SportsBatchesPage() {
         const isExpanded = expandedIds.has(s.id);
         const isEditingSport = editingSportId === s.id;
         const sportBatches = batches.filter(b => b.sport === s.name);
+        const sportStudentCount = students.filter(st => st.sport === s.name).length;
 
         return (
           <div key={s.id} className="card" style={{ padding: 0, marginBottom: 8, overflow: 'hidden', flexShrink: 0 }}>
@@ -157,7 +158,7 @@ export default function SportsBatchesPage() {
                   >
                     <span style={{ fontSize: 12, color: 'var(--gray)', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
                     <span style={{ fontWeight: 600 }}>{s.name}</span>
-                    <span style={{ fontSize: 11, color: 'var(--gray)' }}>({sportBatches.length})</span>
+                    <span style={{ fontSize: 11, color: 'var(--gray)' }}>({sportBatches.length} batch{sportBatches.length === 1 ? '' : 'es'} · {sportStudentCount} student{sportStudentCount === 1 ? '' : 's'})</span>
                   </div>
                   <button className="btn btn-xs" onClick={() => startEditSport(s)}>✏️ Edit</button>
                   <button className="btn btn-xs" style={{ background: 'var(--red)', color: '#fff', border: 'none' }} onClick={() => deleteSport(s.id)}>Delete</button>
@@ -183,6 +184,7 @@ export default function SportsBatchesPage() {
                 <div style={{ maxHeight: 260, overflowY: 'auto' }}>
                 {sportBatches.map(b => {
                   const isEditingBatch = editingBatchId === b.id;
+                  const batchStudentCount = students.filter(st => st.batch === b.name).length;
                   return (
                     <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)', gap: 6 }}>
                       {isEditingBatch ? (
@@ -200,7 +202,9 @@ export default function SportsBatchesPage() {
                         </>
                       ) : (
                         <>
-                          <span style={{ fontWeight: 500, fontSize: 13.5, flex: 1 }}>{b.batchLabel}</span>
+                          <span style={{ fontWeight: 500, fontSize: 13.5, flex: 1 }}>
+                            {b.batchLabel} <span style={{ fontWeight: 400, fontSize: 11.5, color: 'var(--gray)' }}>({batchStudentCount} student{batchStudentCount === 1 ? '' : 's'})</span>
+                          </span>
                           <button className="btn btn-xs" onClick={() => startEditBatch(b)}>✏️ Edit</button>
                           <button className="btn btn-xs" style={{ background: 'var(--red)', color: '#fff', border: 'none' }} onClick={() => deleteBatch(b.id)}>Delete</button>
                         </>
