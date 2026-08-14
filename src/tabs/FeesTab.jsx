@@ -145,7 +145,7 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, fee, onClose, onS
 }
 
 export default function FeesTab() {
-  const { visibleStudents, visibleSports, academy } = useAcademyData();
+  const { visibleStudents, visibleSports, visibleBatches, academy } = useAcademyData();
   const { isAdmin, academyId } = useAuth();
 
   const today = new Date();
@@ -153,9 +153,11 @@ export default function FeesTab() {
   const [month, setMonth] = useState(today.getMonth() + 1); // 1-12
   const [year, setYear] = useState(today.getFullYear());
   const [sportFilter, setSportFilter] = useState('');
+  const [batchFilter, setBatchFilter] = useState('');
   const [statusTab, setStatusTab] = useState('unpaid'); // 'unpaid' | 'paid'
   const [search, setSearch] = useState('');
-  const [showNoAttendance, setShowNoAttendance] = useState(false);
+  const [includeNoAttendance, setIncludeNoAttendance] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [fees, setFees] = useState([]);
   const [attendance, setAttendance] = useState([]); // {student_id, status, date}
@@ -206,9 +208,13 @@ export default function FeesTab() {
     return m;
   }, [fees]);
 
+  const batchesForSport = useMemo(() =>
+    visibleBatches.filter(b => !sportFilter || b.sport === sportFilter),
+    [visibleBatches, sportFilter]);
+
   const sportScopedStudents = useMemo(() =>
-    visibleStudents.filter(s => !sportFilter || s.sport === sportFilter),
-    [visibleStudents, sportFilter]);
+    visibleStudents.filter(s => (!sportFilter || s.sport === sportFilter) && (!batchFilter || s.batch === batchFilter)),
+    [visibleStudents, sportFilter, batchFilter]);
 
   const searchedStudents = useMemo(() => {
     if (!search.trim()) return sportScopedStudents;
@@ -217,7 +223,9 @@ export default function FeesTab() {
   }, [sportScopedStudents, search]);
 
   // Builds the display rows for one month: eligible students (enrolled + attended),
-  // each paired with their fee entry (or null if not yet recorded).
+  // each paired with their fee entry (or null if not yet recorded). Students with
+  // zero attendance that month are tracked separately and only mixed into `rows`
+  // when includeNoAttendance is checked.
   function buildMonthRows(y, m) {
     const monthKey = `${y}-${pad(m)}`;
     const attByStudent = attendanceByStudentByMonth[monthKey] || {};
@@ -232,10 +240,11 @@ export default function FeesTab() {
         noAttendance.push(s);
       }
     });
-    const rows = eligible.map(s => {
+    const toRow = (s) => {
       const fee = feeMap[`${s.id}|${s.sport}|${monthKey}`] || null;
       return { student: s, fee, monthKey, paid: isPaidEntry(fee) };
-    });
+    };
+    const rows = eligible.map(toRow).concat(includeNoAttendance ? noAttendance.map(toRow) : []);
     return { monthKey, rows, noAttendance };
   }
 
@@ -243,15 +252,12 @@ export default function FeesTab() {
     if (viewMode === 'month') return [buildMonthRows(year, month)];
     return Array.from({ length: 12 }, (_, i) => buildMonthRows(year, i + 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, year, month, searchedStudents, attendanceByStudentByMonth, feeMap]);
+  }, [viewMode, year, month, searchedStudents, attendanceByStudentByMonth, feeMap, includeNoAttendance]);
 
   const allRows = useMemo(() => periods.flatMap(p => p.rows), [periods]);
   const paidRows = useMemo(() => allRows.filter(r => r.paid), [allRows]);
   const unpaidRows = useMemo(() => allRows.filter(r => !r.paid), [allRows]);
   const totalNoAttendance = useMemo(() => periods.reduce((s, p) => s + p.noAttendance.length, 0), [periods]);
-
-  const totalCollected = useMemo(() => paidRows.reduce((s, r) => s + (Number(r.fee?.amount) || 0), 0), [paidRows]);
-  const totalDue = unpaidRows.length; // count, not amount, since unpaid entries often have no set amount yet
 
   const activeRows = statusTab === 'paid' ? paidRows : unpaidRows;
 
@@ -289,49 +295,56 @@ export default function FeesTab() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: 'var(--gray)' }}>Collected</div>
-          <div style={{ fontWeight: 800, color: 'var(--green)', fontSize: 16 }}>₹{totalCollected.toLocaleString()}</div>
-        </div>
-        <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: 'var(--gray)' }}>Unpaid</div>
-          <div style={{ fontWeight: 800, color: 'var(--red)', fontSize: 16 }}>{totalDue}</div>
-        </div>
-      </div>
-
-      {/* Period navigation: Month or Full Year */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+      {/* Filters dropdown: view mode, month, year, sport, batch */}
+      <div className="card" style={{ padding: 0, marginBottom: 8, overflow: 'hidden' }}>
         <button
-          style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: viewMode === 'month' ? 'var(--accent2)' : 'var(--card2)', color: viewMode === 'month' ? '#fff' : 'var(--gray)' }}
-          onClick={() => setViewMode('month')}
-        >📅 Month</button>
-        <button
-          style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: viewMode === 'year' ? 'var(--accent2)' : 'var(--card2)', color: viewMode === 'year' ? '#fff' : 'var(--gray)' }}
-          onClick={() => setViewMode('year')}
-        >🗓️ Full Year</button>
-      </div>
+          onClick={() => setFiltersOpen(v => !v)}
+          style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
+        >
+          <span>🔧 Filters — {viewMode === 'year' ? `Full Year ${year}` : `${MONTHS[month - 1]} ${year}`}{sportFilter ? ` · ${sportFilter}` : ''}{batchFilter ? ` · ${batchesForSport.find(b => b.name === batchFilter)?.batchLabel || ''}` : ''}</span>
+          <span>{filtersOpen ? '▲' : '▼'}</span>
+        </button>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        {viewMode === 'month' && (
-          <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={month} onChange={e => setMonth(Number(e.target.value))}>
-            {MONTHS.map((mLabel, i) => <option key={i} value={i + 1}>{mLabel}</option>)}
-          </select>
+        {filtersOpen && (
+          <div style={{ padding: '0 12px 12px' }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              <button
+                style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: viewMode === 'month' ? 'var(--accent2)' : 'var(--card2)', color: viewMode === 'month' ? '#fff' : 'var(--gray)' }}
+                onClick={() => setViewMode('month')}
+              >📅 Month</button>
+              <button
+                style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: viewMode === 'year' ? 'var(--accent2)' : 'var(--card2)', color: viewMode === 'year' ? '#fff' : 'var(--gray)' }}
+                onClick={() => setViewMode('year')}
+              >🗓️ Full Year</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {viewMode === 'month' && (
+                <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={month} onChange={e => setMonth(Number(e.target.value))}>
+                  {MONTHS.map((mLabel, i) => <option key={i} value={i + 1}>{mLabel}</option>)}
+                </select>
+              )}
+              <select className="form-select" style={{ flex: viewMode === 'month' ? 1 : 2, fontSize: 12 }} value={year} onChange={e => setYear(Number(e.target.value))}>
+                {Array.from({ length: 6 }, (_, i) => today.getFullYear() - 3 + i).map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter(''); }}>
+                <option value="">All Sports</option>
+                {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+              </select>
+              <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
+                <option value="">All Batches</option>
+                {batchesForSport.map(b => <option key={b.id} value={b.name}>{b.batchLabel}</option>)}
+              </select>
+            </div>
+          </div>
         )}
-        <select className="form-select" style={{ flex: viewMode === 'month' ? 1 : 2, fontSize: 12 }} value={year} onChange={e => setYear(Number(e.target.value))}>
-          {Array.from({ length: 6 }, (_, i) => today.getFullYear() - 3 + i).map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
         <input className="form-input" style={{ flex: 1, fontSize: 12 }} placeholder="🔍 Search name or roll no." value={search} onChange={e => setSearch(e.target.value)} />
-      </div>
-
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={sportFilter} onChange={e => setSportFilter(e.target.value)}>
-          <option value="">All Sports</option>
-          {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-        </select>
       </div>
 
       {/* Paid / Unpaid tabs */}
@@ -347,9 +360,19 @@ export default function FeesTab() {
       </div>
 
       {totalNoAttendance > 0 && (
-        <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 8, cursor: 'pointer' }} onClick={() => setShowNoAttendance(v => !v)}>
-          ℹ️ {totalNoAttendance} student{totalNoAttendance > 1 ? 's' : ''} without attendance this period {showNoAttendance ? '(hide)' : '(show)'}
-        </div>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={includeNoAttendance}
+            onChange={e => setIncludeNoAttendance(e.target.checked)}
+            style={{ marginTop: 2 }}
+          />
+          <span style={{ fontSize: 11, color: 'var(--gray)', lineHeight: 1.4 }}>
+            Include {totalNoAttendance} student{totalNoAttendance > 1 ? 's' : ''} with no attendance this period.
+            By default they're hidden from Paid/Unpaid since they haven't attended a class yet, so they may not owe fees.
+            Checking this adds them into the Unpaid list so you can still record a payment for them if needed.
+          </span>
+        </label>
       )}
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90 }}>
@@ -380,16 +403,6 @@ export default function FeesTab() {
           ))
         )}
 
-        {!loading && showNoAttendance && totalNoAttendance > 0 && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ padding: '6px 4px', fontSize: 12, fontWeight: 700, color: 'var(--gray)' }}>No attendance this period</div>
-            {periods.flatMap(p => p.noAttendance.map(s => (
-              <div key={s.id + p.monthKey} className="card" style={{ padding: 10, marginBottom: 6, fontSize: 12, color: 'var(--gray)' }}>
-                {s.name} — no attendance in {monthLabelFor(p.monthKey)}, not counted for fees
-              </div>
-            )))}
-          </div>
-        )}
       </div>
 
       {sendModal && (
