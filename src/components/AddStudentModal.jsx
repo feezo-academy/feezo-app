@@ -61,31 +61,69 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
     height: student.height || '', weight: student.weight || '',
     parent: student.parent || '', contact: student.contact || '', contact2: student.contact2 || '',
     address: student.address || '', join_date: student.join_date || todayIso(),
-    sport: student.sport || sports[0]?.name || '', batchLabel: student.batchLabel || '',
+    enrollments: [{ sport: student.sport || sports[0]?.name || '', batch: student.batchLabel || '' }],
   } : {
     roll_no: '', name: initial?.name || '', dob: '', gender: '', height: '', weight: '', parent: initial?.parent || '',
     contact: initial?.contact || '', contact2: '', address: '',
-    join_date: todayIso(), sport: initial?.sport || sports[0]?.name || '', batchLabel: '',
+    join_date: todayIso(), enrollments: [{ sport: initial?.sport || sports[0]?.name || '', batch: '' }],
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [pendingAchievements, setPendingAchievements] = useState([]); // add-mode only, staged until student is saved
   const rollNoTouched = useRef(isEdit); // once user hand-edits roll_no, stop auto-filling it
 
+  // In edit mode, load the student's real sport/batch enrollments from the
+  // `enrollments` table (a student can be enrolled in several). Falls back
+  // to the single sport/batch already on the row if none exist yet.
+  useEffect(() => {
+    if (!isEdit) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from('enrollments').select('sport, batch')
+        .eq('student_id', student.id).eq('academy_id', academyId).order('created_at');
+      if (cancelled) return;
+      if (data && data.length > 0) {
+        setForm(f => ({ ...f, enrollments: data.map(e => ({ sport: e.sport || '', batch: e.batch || '' })) }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isEdit, student, academyId]);
+
   const age = calcAge(form.dob);
   const bmi = calcBMI(form.height, form.weight);
-  const batchOptions = batches.filter(b => b.sport === form.sport);
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
+  const primaryEnrollment = form.enrollments[0] || { sport: '', batch: '' };
+
+  const updateEnrollment = (idx, key, value) => {
+    setForm(f => {
+      const next = f.enrollments.map((en, i) => {
+        if (i !== idx) return en;
+        if (key === 'sport') return { sport: value, batch: '' }; // batch resets when sport changes
+        return { ...en, [key]: value };
+      });
+      return { ...f, enrollments: next };
+    });
+  };
+
+  const addEnrollmentRow = () => {
+    setForm(f => ({ ...f, enrollments: [...f.enrollments, { sport: sports[0]?.name || '', batch: '' }] }));
+  };
+
+  const removeEnrollmentRow = (idx) => {
+    setForm(f => ({ ...f, enrollments: f.enrollments.length > 1 ? f.enrollments.filter((_, i) => i !== idx) : f.enrollments }));
+  };
+
   // Auto-fill roll number as (Sport initial)(Batch initial) + next 2-digit sequence,
-  // e.g. Silambam + Morning Batch -> SM01. Stops once the user types a custom roll no.
+  // e.g. Silambam + Morning Batch -> SM01. Based on the student's first/primary
+  // sport-batch. Stops once the user types a custom roll no.
   useEffect(() => {
     if (isEdit || rollNoTouched.current) return;
-    if (!form.sport || !form.batchLabel) return;
+    if (!primaryEnrollment.sport || !primaryEnrollment.batch) return;
     const existingRolls = existingStudents.map(s => s.roll_no).filter(Boolean);
-    const auto = generateRollNumber(form.sport, form.batchLabel, existingRolls);
+    const auto = generateRollNumber(primaryEnrollment.sport, primaryEnrollment.batch, existingRolls);
     setForm(f => ({ ...f, roll_no: auto }));
-  }, [form.sport, form.batchLabel, isEdit, existingStudents]);
+  }, [primaryEnrollment.sport, primaryEnrollment.batch, isEdit, existingStudents]);
 
   const onRollNoChange = (e) => {
     rollNoTouched.current = true;
@@ -96,8 +134,11 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
     if (!form.name || !form.contact) { setError('Full name and Contact Number 1 are required.'); return; }
     if (!isValidPhone(form.contact)) { setError('Contact Number 1 must be a 10-digit number (no +91 needed).'); return; }
     if (form.contact2 && !isValidPhone(form.contact2)) { setError('Contact Number 2 must be a 10-digit number (no +91 needed).'); return; }
+    const validEnrollments = form.enrollments.filter(en => en.sport && en.batch);
+    if (validEnrollments.length === 0) { setError('Select at least one sport and batch.'); return; }
     setSaving(true);
     setError('');
+    const primary = validEnrollments[0];
     const payload = {
       roll_no: form.roll_no || null,
       name: form.name,
@@ -111,13 +152,24 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
       contact2: form.contact2 ? normalizePhone(form.contact2) : null,
       address: form.address || null,
       join_date: form.join_date || null,
-      batch: buildBatchKey(form.sport, form.batchLabel),
+      batch: buildBatchKey(primary.sport, primary.batch), // legacy mirror of the primary sport/batch
     };
     const { data: savedRow, error: err } = isEdit
       ? await supabase.from('students').update(payload).eq('id', student.id).select().single()
       : await supabase.from('students').insert({ ...payload, academy_id: academyId }).select().single();
+    if (err) { setSaving(false); setError(err.message); return; }
+
+    const studentId = isEdit ? student.id : savedRow.id;
+    if (isEdit) {
+      await supabase.from('enrollments').delete().eq('student_id', studentId).eq('academy_id', academyId);
+    }
+    const enrollRows = validEnrollments.map(en => ({
+      academy_id: academyId, student_id: studentId, sport: en.sport, batch: en.batch,
+      join_date: form.join_date || null, active: true,
+    }));
+    const { error: enrollErr } = await supabase.from('enrollments').insert(enrollRows);
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (enrollErr) { setError(enrollErr.message); return; }
 
     if (!isEdit && pendingAchievements.length > 0 && savedRow) {
       const rows = pendingAchievements.map(({ _tmpId, ...a }) => ({ ...a, student_id: savedRow.id, academy_id: academyId }));
@@ -238,20 +290,40 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
                 <input className="form-input" type="date" value={form.join_date} onChange={set('join_date')} />
               </Field>
             </div>
-            <div style={{ ...gridStyle, marginTop: 10 }}>
-              <Field label="Sport">
-                <select className="form-select" value={form.sport}
-                  onChange={e => setForm(f => ({ ...f, sport: e.target.value, batchLabel: '' }))}>
-                  {sports.length === 0 && <option value="">No sports added yet</option>}
-                  {sports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Batch">
-                <select className="form-select" value={form.batchLabel} onChange={set('batchLabel')}>
-                  <option value="">Select batch</option>
-                  {batchOptions.map(b => <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>)}
-                </select>
-              </Field>
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {form.enrollments.map((en, idx) => {
+                const batchOptions = batches.filter(b => b.sport === en.sport);
+                return (
+                  <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Field label={idx === 0 ? 'Sport' : `Sport ${idx + 1}`}>
+                        <select className="form-select" value={en.sport} onChange={e => updateEnrollment(idx, 'sport', e.target.value)}>
+                          {sports.length === 0 && <option value="">No sports added yet</option>}
+                          {sports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Field label={idx === 0 ? 'Batch' : `Batch ${idx + 1}`}>
+                        <select className="form-select" value={en.batch} onChange={e => updateEnrollment(idx, 'batch', e.target.value)}>
+                          <option value="">Select batch</option>
+                          {batchOptions.map(b => <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                    {form.enrollments.length > 1 && (
+                      <button type="button" onClick={() => removeEnrollmentRow(idx)} aria-label="Remove sport/batch"
+                        style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card2)', color: 'var(--gray)', cursor: 'pointer', flexShrink: 0, fontSize: 14 }}>
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              <button type="button" onClick={addEnrollmentRow}
+                style={{ alignSelf: 'flex-start', fontSize: 12, fontWeight: 700, color: 'var(--accent2)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
+                + Add another sport / batch
+              </button>
             </div>
           </div>
 
