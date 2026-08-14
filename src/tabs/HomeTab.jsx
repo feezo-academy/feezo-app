@@ -263,32 +263,35 @@ export default function HomeTab() {
 
       <div className="stats-grid" style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
         {[
-          { key: 'total', color: 'stat-blue', icon: '👥', label: 'Total Students', value: currentStrength,
+          { key: 'total', color: 'stat-blue', icon: '👥', label: 'Total Students', value: currentStrength, caption: '',
             onClick: () => setDrilldown({ title: 'Active Students', icon: '👥', students: activeStudents }) },
-          { key: 'joined', color: 'stat-orange', icon: '🆕', label: 'Joined', value: joinedStudents.length,
+          { key: 'joined', color: 'stat-orange', icon: '🆕', label: 'Joined', value: joinedStudents.length, caption: '',
             onClick: () => setDrilldown({ title: 'Joined This Month', icon: '🆕', students: joinedStudents }) },
-          { key: 'collected', color: 'stat-green', icon: '✅', label: 'Fees Collected', value: `₹${collected.toLocaleString()}`,
+          { key: 'collected', color: 'stat-green', icon: '✅', label: 'Fees Collected', value: `₹${collected.toLocaleString()}`, caption: '',
             onClick: () => setDrilldown({ title: 'Fees Collected', icon: '✅', students: feeStudentList(collectedFees) }) },
-          { key: 'pending', color: 'stat-red', icon: '⚠️', label: 'Fee Pending', value: pending,
+          { key: 'pending', color: 'stat-red', icon: '⚠️', label: 'Fee Pending', value: pending, caption: `Dues through ${cutoffLabel}`,
             onClick: () => setDrilldown({ title: `Fee Pending (through ${cutoffLabel})`, icon: '⚠️', rows: pendingFeeRows }) },
         ].map(tile => (
           <div
             key={tile.key}
             className={`stat-card grad ${tile.color}`}
             style={{
-              cursor: 'pointer', height: 68, boxSizing: 'border-box', padding: '8px 10px',
+              cursor: 'pointer', height: 86, boxSizing: 'border-box', padding: '9px 11px',
               display: 'flex', flexDirection: 'column', justifyContent: 'space-between', overflow: 'hidden',
             }}
             onClick={tile.onClick}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-              <span style={{ fontSize: 12.5, lineHeight: 1 }}>{tile.icon}</span>
-              <span style={{ fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <span style={{ fontSize: 13.5, lineHeight: 1 }}>{tile.icon}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {tile.label}
               </span>
             </div>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800 }}>
               {tile.value}
+            </div>
+            <div style={{ fontSize: 9, opacity: 0.85, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {tile.caption || '\u00A0'}
             </div>
           </div>
         ))}
