@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
@@ -77,19 +77,6 @@ export default function StudentsTab() {
 
   const batchesForSport = visibleBatches.filter(b => !sportFilter || b.sport === sportFilter);
 
-  // Default to the first available sport and batch (once, on initial load) instead of
-  // "All Sports / All Batches" — but don't fight the user if they deliberately pick "All" later.
-  const didInitFilters = useRef(false);
-  useEffect(() => {
-    if (didInitFilters.current) return;
-    if (visibleSports.length === 0) return;
-    didInitFilters.current = true;
-    const firstSport = visibleSports[0].name;
-    setSportFilter(firstSport);
-    const firstBatch = visibleBatches.find(b => b.sport === firstSport);
-    if (firstBatch) setBatchFilter(firstBatch.name);
-  }, [visibleSports, visibleBatches]);
-
   const toggleSelect = (id) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -162,43 +149,37 @@ export default function StudentsTab() {
         </div>
       </div>
 
-      {isAdmin && filtered.length > 0 && (
+      {isAdmin && selected.size > 0 && (
         <div style={{ background: 'var(--accent)', border: '1px solid var(--accent2)', borderRadius: 10, padding: '7px 8px', marginBottom: 8 }}>
-          {selected.size > 0 && (
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>{selected.size} selected</div>
-          )}
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>{selected.size} selected</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
             <button
-              className="btn btn-xs btn-outline"
               onClick={selectAll}
               disabled={selected.size === filtered.length}
-              style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: '6px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              style={{ minWidth: 0, fontSize: 10, fontWeight: 700, padding: '6px 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: '1.5px solid #000', borderRadius: 6, background: '#fff', color: '#000', opacity: selected.size === filtered.length ? 0.5 : 1 }}
             >
-              ☑ Select All
+              ☑ All
             </button>
             <button
-              className="btn btn-xs btn-outline"
               onClick={() => setSelected(new Set())}
               disabled={selected.size === 0}
-              style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: '6px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              style={{ minWidth: 0, fontSize: 10, fontWeight: 700, padding: '6px 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: '1.5px solid #000', borderRadius: 6, background: '#fff', color: '#000', opacity: selected.size === 0 ? 0.5 : 1 }}
             >
-              ✕ Deselect
+              ✕ None
             </button>
             <button
-              className="btn btn-xs btn-primary"
               onClick={() => setShowBulkEdit(true)}
               disabled={selected.size === 0}
-              style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: '6px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              style={{ minWidth: 0, fontSize: 10, fontWeight: 700, padding: '6px 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: '1.5px solid #000', borderRadius: 6, background: 'var(--primary, #4f6bed)', color: '#fff', opacity: selected.size === 0 ? 0.5 : 1 }}
             >
               ✏️ Edit
             </button>
             <button
-              className="btn btn-xs"
               onClick={bulkDelete}
               disabled={selected.size === 0}
-              style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: '6px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', background: 'var(--red)', color: '#fff', border: 'none', opacity: selected.size === 0 ? 0.5 : 1 }}
+              style={{ minWidth: 0, fontSize: 10, fontWeight: 700, padding: '6px 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: '1.5px solid #000', borderRadius: 6, background: 'var(--red)', color: '#fff', opacity: selected.size === 0 ? 0.5 : 1 }}
             >
-              🗑️ Delete
+              🗑️ Del
             </button>
           </div>
         </div>
