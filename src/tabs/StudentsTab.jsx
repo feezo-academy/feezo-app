@@ -36,6 +36,24 @@ function RollBadge({ rollNo }) {
   );
 }
 
+// A student can be enrolled in more than one sport/batch — show every
+// enrollment as its own small pill rather than just the primary one.
+function SportBatchBadges({ enrollments }) {
+  if (!enrollments || enrollments.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+      {enrollments.map((en, i) => (
+        <span key={i} style={{
+          fontSize: 10.5, fontWeight: 600, padding: '2px 7px', borderRadius: 8,
+          background: 'var(--card2)', color: 'var(--gray)', border: '1px solid var(--border)',
+        }}>
+          {en.sport}{en.batchLabel ? ` · ${en.batchLabel}` : ''}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function StudentsTab() {
   const { visibleStudents, visibleSports, visibleBatches, refresh } = useAcademyData();
   const { isAdmin, academyId, canViewContact } = useAuth();
@@ -52,8 +70,8 @@ export default function StudentsTab() {
 
   const filtered = useMemo(() => {
     let list = visibleStudents.filter(s => {
-      if (sportFilter && s.sport !== sportFilter) return false;
-      if (batchFilter && s.batch !== batchFilter) return false;
+      if (sportFilter && !s.enrollments.some(en => en.sport === sportFilter)) return false;
+      if (batchFilter && !s.enrollments.some(en => en.batch === batchFilter)) return false;
       if (search) {
         const q = search.toLowerCase();
         if (!(s.name?.toLowerCase().includes(q) || s.roll_no?.toLowerCase?.().includes(q))) return false;
@@ -196,6 +214,7 @@ export default function StudentsTab() {
             <RollBadge rollNo={s.roll_no} />
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
+              <SportBatchBadges enrollments={s.enrollments} />
             </div>
             <span style={{ color: 'var(--gray)' }}>›</span>
           </div>
@@ -221,6 +240,7 @@ export default function StudentsTab() {
                     {s.name}
                     <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'rgba(220,38,38,.12)', color: '#ef4444' }}>Dropout</span>
                   </div>
+                  <SportBatchBadges enrollments={s.enrollments} />
                 </div>
                 <span style={{ color: 'var(--gray)' }}>›</span>
               </div>
