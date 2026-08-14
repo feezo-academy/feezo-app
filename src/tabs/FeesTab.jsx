@@ -40,11 +40,12 @@ function isEligible(student, year, month, attendanceByStudent) {
   return !!(rows && rows.some(r => r.status === 'P'));
 }
 
-// Admin-only capability check: staff can create a first-time fee entry, but
-// once someone has recorded a payment (collected_by is set), only admin can edit it.
+// Staff can create a first-time entry and edit it freely while it's still unpaid.
+// Once it's marked paid, only admin can revert it to unpaid or change the amount.
 function canEditFee(fee, isAdmin) {
   if (isAdmin) return true;
-  return !fee || !fee.collected_by;
+  if (!fee) return true;
+  return fee.status !== 'paid';
 }
 
 // Modal for creating/editing a single student's fee entry for a given month+sport.
@@ -146,7 +147,7 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, fee, onClose, onS
 
 export default function FeesTab() {
   const { visibleStudents, visibleSports, visibleBatches, academy } = useAcademyData();
-  const { isAdmin, academyId } = useAuth();
+  const { isAdmin, academyId, appUser, user } = useAuth();
 
   const today = new Date();
   const [viewMode, setViewMode] = useState('month'); // 'month' | 'year'
@@ -269,15 +270,50 @@ export default function FeesTab() {
   const openReminder = (row) => {
     const monthLabel = monthLabelFor(row.monthKey);
     const text = buildMsg(academy?.msg_template || DEFAULT_MSG, { name: row.student.name, month: monthLabel, academy: academy?.name });
-    setSendModal({ student: row.student, month: monthLabel, kind: 'reminder', text });
+    setSendModal({ row, student: row.student, month: monthLabel, kind: 'reminder', text });
   };
   const openThankYou = (row) => {
     const monthLabel = monthLabelFor(row.monthKey);
     const text = buildMsg(academy?.thank_template || DEFAULT_THANK, { name: row.student.name, month: monthLabel, academy: academy?.name, amount: row.fee?.amount, method: row.fee?.method || 'Cash' });
-    setSendModal({ student: row.student, month: monthLabel, kind: 'paid', text });
+    setSendModal({ row, student: row.student, month: monthLabel, kind: 'paid', text });
   };
   const openEntry = (row) => {
     setEntryModal({ student: row.student, monthKey: row.monthKey, monthLabel: monthLabelFor(row.monthKey), sport: row.student.sport, fee: row.fee });
+  };
+
+  // Logs a sent reminder/thank-you against the fee row (creating a bare unpaid
+  // row if one doesn't exist yet), so the Remind button can show a running count.
+  const recordMsgSent = async (row, kind, type) => {
+    if (!row) return;
+    const existing = row.fee;
+    const entry = { kind, type, by: appUser?.name || user?.email || '', at: new Date().toISOString() };
+    const msgSent = [...(existing?.msg_sent || []), entry];
+    const payload = {
+      academy_id: academyId,
+      student_id: row.student.id,
+      sport: row.student.sport,
+      month: row.monthKey,
+      status: existing?.status || 'unpaid',
+      amount: existing?.amount ?? null,
+      method: existing?.method ?? null,
+      paid_date: existing?.paid_date ?? null,
+      collected_by: existing?.collected_by ?? null,
+      msg_sent: msgSent,
+    };
+    const { data, error } = await supabase
+      .from('fees')
+      .upsert(payload, { onConflict: 'student_id,sport,month' })
+      .select()
+      .single();
+    if (!error && data) {
+      setFees(prev => {
+        const idx = prev.findIndex(f => f.id === data.id);
+        if (idx === -1) return [...prev, data];
+        const next = [...prev];
+        next[idx] = data;
+        return next;
+      });
+    }
   };
 
   const goPrevMonth = () => {
@@ -424,6 +460,7 @@ export default function FeesTab() {
           kind={sendModal.kind}
           initialText={sendModal.text}
           onClose={() => setSendModal(null)}
+          onSent={(type) => recordMsgSent(sendModal.row, sendModal.kind, type)}
         />
       )}
 
@@ -455,13 +492,14 @@ function FeeRow({ row, isAdmin, onReminder, onThankYou, onEdit }) {
   const { student, fee, paid } = row;
   const editable = canEditFee(fee, isAdmin);
   const btnLabel = paid && !editable ? '🔒 Paid' : (fee ? '✏️ Edit' : '💳 Pay');
+  const reminderCount = (fee?.msg_sent || []).filter(m => m.kind === 'reminder').length;
 
   return (
     <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8, flexWrap: 'wrap' }}>
       <div style={{ flex: 1, minWidth: 120 }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>{student.name}</div>
         <div style={{ fontSize: 12, color: 'var(--gray)' }}>
-          {fee?.amount ? `₹${fee.amount}` : '—'} · {student.batchLabel || student.sport}
+          {student.batchLabel || student.sport}
           {fee?.method && <span> · {fee.method}</span>}
           {fee?.collected_by && <span style={{ color: 'var(--gold)' }}> · 👤 {fee.collected_by}</span>}
         </div>
@@ -472,7 +510,7 @@ function FeeRow({ row, isAdmin, onReminder, onThankYou, onEdit }) {
       {paid ? (
         <button className="btn btn-xs btn-outline" onClick={() => onThankYou(row)}>🎉 Thank You</button>
       ) : (
-        <button className="btn btn-xs btn-outline" onClick={() => onReminder(row)}>💬 Remind</button>
+        <button className="btn btn-xs btn-outline" onClick={() => onReminder(row)}>💬 Remind{reminderCount > 0 ? ` (${reminderCount})` : ''}</button>
       )}
       <button className="btn btn-xs btn-primary" disabled={paid && !editable} style={{ opacity: paid && !editable ? 0.5 : 1 }} onClick={() => editable && onEdit(row)}>
         {btnLabel}
