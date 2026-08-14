@@ -105,7 +105,7 @@ export default function HomeTab() {
   });
   const currentStrength = activeStudents.length;
 
-  const joinedStudents = students.filter(s => {
+  const joinedStudents = activeStudents.filter(s => {
     const j = s.join_date ? new Date(s.join_date) : null;
     return j && j.getMonth() === month && j.getFullYear() === year;
   });
