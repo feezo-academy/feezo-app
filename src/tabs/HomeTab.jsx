@@ -78,8 +78,8 @@ export default function HomeTab() {
   const chartData = useMemo(() => dateRange.map(dateStr => {
     const day = parseInt(dateStr.slice(-2), 10);
     const dayRows = attRows.filter(a => a.date === dateStr && studentIds.has(a.student_id));
-    const present = dayRows.filter(a => a.status === 'present').length;
-    const absent = dayRows.filter(a => a.status === 'absent').length;
+    const present = dayRows.filter(a => a.status === 'P').length;
+    const absent = dayRows.filter(a => a.status === 'A').length;
     const strength = students.filter(s => {
       if (s.join_date && s.join_date > dateStr) return false; // only exclude if they join in the future
       if (s.banned && (!s.banned_on || s.banned_on.slice(0, 10) <= dateStr)) return false;
