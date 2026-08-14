@@ -79,13 +79,13 @@ input,select,textarea{font-family:var(--font);}
 .content{flex:1;overflow:hidden;position:relative;}
 
 /* BOTTOM NAV */
-.bottom-nav{position:fixed;bottom:18px;left:0;right:0;background:#dfe5ee;border-top:1px solid var(--border);display:flex;z-index:200;height:60px;box-shadow:0 -2px 10px rgba(30,50,90,.06);}
-.app-copyright{position:fixed;bottom:0;left:0;right:0;height:18px;line-height:18px;text-align:center;font-size:10px;color:var(--gray);background:#d5dce7;z-index:201;letter-spacing:.2px;}
+.bottom-nav{position:fixed;bottom:14px;left:0;right:0;background:#dfe5ee;border-top:1px solid var(--border);display:flex;z-index:200;height:48px;box-shadow:0 -2px 10px rgba(30,50,90,.06);}
+.app-copyright{position:fixed;bottom:0;left:0;right:0;height:14px;line-height:14px;text-align:center;font-size:9px;color:var(--gray);background:#d5dce7;z-index:201;letter-spacing:.2px;}
 body.dark-theme .app-copyright{background:#0a1830;color:#7f93b5;}
-.nav-item{flex:1;display:flex;align-items:center;justify-content:center;color:var(--gray);transition:color .2s;padding:8px 1px;border:none;background:none;position:relative;}
+.nav-item{flex:1;display:flex;align-items:center;justify-content:center;color:var(--gray);transition:color .2s;padding:5px 1px;border:none;background:none;position:relative;}
 .nav-item.active{color:var(--accent2);}
 .nav-item.active::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--accent2);}
-.nav-item svg{width:23px;height:23px;stroke:currentColor;}
+.nav-item svg{width:19px;height:19px;stroke:currentColor;}
 
 /* PAGES — instant tab switch (no slide) */
 .pages-viewport {
@@ -112,7 +112,7 @@ body.dark-theme .app-copyright{background:#0a1830;color:#7f93b5;}
   top: 0;
   left: 0;
   right: 0;
-  bottom: 78px; /* clear fixed bottom-nav (60px) + copyright bar (18px) */
+  bottom: 62px; /* clear fixed bottom-nav (48px) + copyright bar (14px) */
   overflow-y: auto;
   overflow-x: hidden;
   padding: 14px;
@@ -211,9 +211,9 @@ tr:hover td{background:var(--card2);}
 .badge-gold{background:#f59e0b22;color:#fbbf24;border:1px solid #f59e0b44;}
 
 /* MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:none;align-items:flex-end;justify-content:center;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:none;align-items:flex-end;justify-content:center;padding-bottom:62px;}
 .modal-overlay.active{display:flex;}
-.modal{background:var(--card);border-radius:20px 20px 0 0;padding:18px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto;}
+.modal{background:var(--card);border-radius:20px;padding:18px;width:100%;max-width:500px;max-height:82vh;overflow-y:auto;margin:0 10px;}
 .modal-title{font-size:16px;font-weight:700;color:var(--gold);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
 .modal-close{background:var(--royal2);border:none;color:var(--gray);width:28px;height:28px;border-radius:50%;font-size:17px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .ts-day-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:20px;border:1.5px solid var(--border);background:var(--card2);cursor:pointer;font-size:12px;font-weight:600;color:var(--gray);transition:all .15s;user-select:none;}
@@ -352,7 +352,7 @@ tr:hover td{background:var(--card2);}
 }
 
 /* TOAST */
-#toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--accent2);color:#fff;padding:9px 18px;border-radius:20px;font-size:13px;font-weight:600;z-index:9000;opacity:0;transition:all .28s;pointer-events:none;white-space:nowrap;max-width:90vw;text-overflow:ellipsis;overflow:hidden;}
+#toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--accent2);color:#fff;padding:9px 18px;border-radius:20px;font-size:13px;font-weight:600;z-index:9000;opacity:0;transition:all .28s;pointer-events:none;white-space:nowrap;max-width:90vw;text-overflow:ellipsis;overflow:hidden;}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 #toast.error{background:var(--red);}
 #toast.success{background:#16a34a;}
