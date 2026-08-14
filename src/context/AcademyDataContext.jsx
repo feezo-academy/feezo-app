@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './AuthContext';
-import { parseBatchKey } from '../lib/batchKey';
+import { parseBatchKey, buildBatchKey } from '../lib/batchKey';
 
 const AcademyDataContext = createContext(null);
 
@@ -10,20 +10,23 @@ export function AcademyDataProvider({ children }) {
   const [sports, setSports] = useState([]);
   const [rawBatches, setRawBatches] = useState([]);
   const [rawStudents, setRawStudents] = useState([]);
+  const [rawEnrollments, setRawEnrollments] = useState([]);
   const [academy, setAcademy] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!academyId) return;
     setLoading(true);
-    const [sp, bt, st] = await Promise.all([
+    const [sp, bt, st, en] = await Promise.all([
       supabase.from('sports').select('*').eq('academy_id', academyId),
       supabase.from('batches').select('*').eq('academy_id', academyId),
       supabase.from('students').select('*').eq('academy_id', academyId),
+      supabase.from('enrollments').select('*').eq('academy_id', academyId),
     ]);
     setSports(sp.data || []);
     setRawBatches(bt.data || []);
     setRawStudents(st.data || []);
+    setRawEnrollments(en.data || []);
     setLoading(false);
   }, [academyId]);
 
@@ -45,10 +48,25 @@ export function AcademyDataProvider({ children }) {
     return { ...b, sport, batchLabel: label };
   }), [rawBatches]);
 
-  const students = useMemo(() => rawStudents.map(s => {
-    const { sport, label } = parseBatchKey(s.batch);
-    return { ...s, sport, batchLabel: label };
-  }), [rawStudents]);
+  const students = useMemo(() => {
+    // Group enrollments by student so a student enrolled in several
+    // sport/batch combinations carries the full list, not just the one
+    // mirrored onto students.batch (the "primary" sport/batch).
+    const enrollmentsByStudent = new Map();
+    for (const en of rawEnrollments) {
+      if (!en.sport || !en.batch) continue;
+      const list = enrollmentsByStudent.get(en.student_id) || [];
+      list.push({ sport: en.sport, batchLabel: en.batch, batch: buildBatchKey(en.sport, en.batch) });
+      enrollmentsByStudent.set(en.student_id, list);
+    }
+    return rawStudents.map(s => {
+      const { sport, label } = parseBatchKey(s.batch);
+      const enrollments = enrollmentsByStudent.get(s.id);
+      // Fall back to the single primary sport/batch for students that don't
+      // have rows in `enrollments` yet (e.g. added before multi-sport support).
+      return { ...s, sport, batchLabel: label, enrollments: enrollments && enrollments.length > 0 ? enrollments : [{ sport, batchLabel: label, batch: s.batch }] };
+    });
+  }, [rawStudents, rawEnrollments]);
 
   const visibleSports = useMemo(() => {
     if (isAdmin) return sports;
@@ -64,7 +82,7 @@ export function AcademyDataProvider({ children }) {
     if (isAdmin) return students;
     const sportSet = new Set(assignedSports);
     const batchSet = new Set(assignedBatches);
-    return students.filter(s => sportSet.has(s.sport) || batchSet.has(s.batch));
+    return students.filter(s => s.enrollments.some(en => sportSet.has(en.sport) || batchSet.has(en.batch)));
   }, [students, isAdmin, assignedSports, assignedBatches]);
 
   const value = {
