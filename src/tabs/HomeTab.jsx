@@ -130,9 +130,42 @@ export default function HomeTab() {
   const scopedFees = scopedFeesMonth.length > 0 ? scopedFeesMonth : scopedFeesAll; // fall back if month text doesn't match anything
 
   const collectedFees = scopedFees.filter(f => f.status === 'paid');
-  const pendingFees = scopedFees.filter(f => f.status !== 'paid');
   const collected = collectedFees.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+
+  // --- Fee Pending: active students only, unpaid fees strictly BEFORE the
+  // browsed month (e.g. browsing July shows dues through June). ---
+  const parseFeeMonthKey = (monthStr) => {
+    if (!monthStr) return null;
+    const s = String(monthStr).trim();
+    const iso = s.match(/^(\d{4})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}`;
+    const d = new Date(`1 ${s}`);
+    if (!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return null;
+  };
+  let cutM = month - 1, cutY = year;
+  if (cutM < 0) { cutM = 11; cutY--; }
+  const cutoffKey = `${cutY}-${String(cutM + 1).padStart(2, '0')}`;
+  const cutoffLabel = new Date(cutY, cutM, 1).toLocaleDateString([], { month: 'short', year: 'numeric' });
+
+  const activeStudentIds = new Set(activeStudents.map(s => s.id));
+
+  const pendingFees = fees.filter(f => {
+    if (f.status === 'paid') return false;
+    if (!activeStudentIds.has(f.student_id)) return false;
+    const k = parseFeeMonthKey(f.month);
+    if (!k) return false;
+    return k <= cutoffKey;
+  });
   const pending = pendingFees.length;
+
+  const pendingFeeRows = useMemo(() => pendingFees.map(f => {
+    const s = studentsById[f.student_id];
+    const k = parseFeeMonthKey(f.month);
+    const [yy, mm] = k.split('-').map(Number);
+    const monthShort = new Date(yy, mm - 1, 1).toLocaleDateString([], { month: 'short' });
+    return { id: f.id, name: s?.name || 'Unknown', contact: s?.contact || '', monthKey: k, monthShort };
+  }), [pendingFees, studentsById]);
 
   const feeStudentList = (feeRows) => {
     const seen = new Map();
@@ -202,10 +235,13 @@ export default function HomeTab() {
           <div className="stat-val" style={{ fontSize: 16 }}>₹{collected.toLocaleString()}</div>
         </div>
         <div className="stat-card grad stat-red" style={{ cursor: 'pointer' }}
-          onClick={() => setDrilldown({ title: 'Fee Pending', icon: '⚠️', students: feeStudentList(pendingFees) })}>
+          onClick={() => setDrilldown({ title: `Fee Pending (through ${cutoffLabel})`, icon: '⚠️', rows: pendingFeeRows })}>
           <div className="stat-icon">⚠️</div>
           <div className="stat-label">Fee Pending</div>
           <div className="stat-val">{pending}</div>
+          <div style={{ fontSize: 9.5, opacity: 0.85, marginTop: 2, lineHeight: 1.3 }}>
+            Active students · dues through {cutoffLabel}
+          </div>
         </div>
       </div>
 
@@ -275,7 +311,8 @@ export default function HomeTab() {
         <StatDrilldownModal
           title={drilldown.title}
           icon={drilldown.icon}
-          students={drilldown.students}
+          students={drilldown.students || []}
+          rows={drilldown.rows}
           onClose={() => setDrilldown(null)}
         />
       )}
