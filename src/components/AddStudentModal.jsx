@@ -160,14 +160,23 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
     if (err) { setSaving(false); setError(err.message); return; }
 
     const studentId = isEdit ? student.id : savedRow.id;
-    if (isEdit) {
-      await supabase.from('enrollments').delete().eq('student_id', studentId).eq('academy_id', academyId);
-    }
     const enrollRows = validEnrollments.map(en => ({
       academy_id: academyId, student_id: studentId, sport: en.sport, batch: en.batch,
       join_date: form.join_date || null, active: true,
     }));
-    const { error: enrollErr } = await supabase.from('enrollments').insert(enrollRows);
+    if (isEdit) {
+      // Upsert on (student_id, sport) instead of delete-then-insert: updates
+      // existing sport enrollments in place (no risk of colliding with a row
+      // that wasn't actually removed) and only deletes sports that were
+      // dropped from the form.
+      const keepSports = validEnrollments.map(en => en.sport);
+      const { error: delErr } = await supabase.from('enrollments').delete()
+        .eq('student_id', studentId).eq('academy_id', academyId)
+        .not('sport', 'in', `(${keepSports.map(s => `"${s}"`).join(',')})`);
+      if (delErr) { setSaving(false); setError(delErr.message); return; }
+    }
+    const { error: enrollErr } = await supabase.from('enrollments')
+      .upsert(enrollRows, { onConflict: 'student_id,sport' });
     setSaving(false);
     if (enrollErr) { setError(enrollErr.message); return; }
 
