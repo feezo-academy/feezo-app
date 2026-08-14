@@ -28,7 +28,7 @@ export default function SendMessageModal({ student, month, kind, initialText, on
     });
     setSending(false);
     if (error) { alert('Logged failed: ' + error.message); }
-    onSent?.();
+    onSent?.(type);
     onClose();
   };
 
