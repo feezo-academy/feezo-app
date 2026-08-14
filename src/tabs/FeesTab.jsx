@@ -154,7 +154,7 @@ export default function FeesTab() {
   const [year, setYear] = useState(today.getFullYear());
   const [sportFilter, setSportFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
-  const [statusTab, setStatusTab] = useState('unpaid'); // 'unpaid' | 'paid'
+  const [statusFilter, setStatusFilter] = useState('unpaid'); // 'all' | 'paid' | 'unpaid'
   const [search, setSearch] = useState('');
   const [includeNoAttendance, setIncludeNoAttendance] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -259,7 +259,7 @@ export default function FeesTab() {
   const unpaidRows = useMemo(() => allRows.filter(r => !r.paid), [allRows]);
   const totalNoAttendance = useMemo(() => periods.reduce((s, p) => s + p.noAttendance.length, 0), [periods]);
 
-  const activeRows = statusTab === 'paid' ? paidRows : unpaidRows;
+  const activeRows = statusFilter === 'all' ? allRows : statusFilter === 'paid' ? paidRows : unpaidRows;
 
   const monthLabelFor = (mk) => {
     const [y, m] = mk.split('-').map(Number);
@@ -278,6 +278,13 @@ export default function FeesTab() {
   };
   const openEntry = (row) => {
     setEntryModal({ student: row.student, monthKey: row.monthKey, monthLabel: monthLabelFor(row.monthKey), sport: row.student.sport, fee: row.fee });
+  };
+
+  const goPrevMonth = () => {
+    if (month === 1) { setMonth(12); setYear(y => y - 1); } else { setMonth(m => m - 1); }
+  };
+  const goNextMonth = () => {
+    if (month === 12) { setMonth(1); setYear(y => y + 1); } else { setMonth(m => m + 1); }
   };
 
   const exportRows = activeRows.map(r => ({
@@ -301,7 +308,7 @@ export default function FeesTab() {
           onClick={() => setFiltersOpen(v => !v)}
           style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
         >
-          <span>🔧 Filters — {viewMode === 'year' ? `Full Year ${year}` : `${MONTHS[month - 1]} ${year}`}{sportFilter ? ` · ${sportFilter}` : ''}{batchFilter ? ` · ${batchesForSport.find(b => b.name === batchFilter)?.batchLabel || ''}` : ''}</span>
+          <span>Filters — {viewMode === 'year' ? `Full Year ${year}` : `${MONTHS[month - 1]} ${year}`}{sportFilter ? ` · ${sportFilter}` : ''}{batchFilter ? ` · ${batchesForSport.find(b => b.name === batchFilter)?.batchLabel || ''}` : ''}</span>
           <span>{filtersOpen ? '▲' : '▼'}</span>
         </button>
 
@@ -318,15 +325,32 @@ export default function FeesTab() {
               >🗓️ Full Year</button>
             </div>
 
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
               {viewMode === 'month' && (
-                <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={month} onChange={e => setMonth(Number(e.target.value))}>
-                  {MONTHS.map((mLabel, i) => <option key={i} value={i + 1}>{mLabel}</option>)}
-                </select>
+                <>
+                  <button
+                    className="btn btn-xs"
+                    style={{ padding: '6px 10px' }}
+                    onClick={goPrevMonth}
+                  >◀</button>
+                  <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={month} onChange={e => setMonth(Number(e.target.value))}>
+                    {MONTHS.map((mLabel, i) => <option key={i} value={i + 1}>{mLabel}</option>)}
+                  </select>
+                  <button
+                    className="btn btn-xs"
+                    style={{ padding: '6px 10px' }}
+                    onClick={goNextMonth}
+                  >▶</button>
+                </>
               )}
-              <select className="form-select" style={{ flex: viewMode === 'month' ? 1 : 2, fontSize: 12 }} value={year} onChange={e => setYear(Number(e.target.value))}>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
+              <button className="btn btn-xs" style={{ padding: '6px 10px' }} onClick={() => setYear(y => y - 1)}>◀</button>
+              <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={year} onChange={e => setYear(Number(e.target.value))}>
                 {Array.from({ length: 6 }, (_, i) => today.getFullYear() - 3 + i).map(y => <option key={y} value={y}>{y}</option>)}
               </select>
+              <button className="btn btn-xs" style={{ padding: '6px 10px' }} onClick={() => setYear(y => y + 1)}>▶</button>
             </div>
 
             <div style={{ display: 'flex', gap: 6 }}>
@@ -347,31 +371,19 @@ export default function FeesTab() {
         <input className="form-input" style={{ flex: 1, fontSize: 12 }} placeholder="🔍 Search name or roll no." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* Paid / Unpaid tabs */}
+      {/* Paid / Unpaid dropdown */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        <button
-          style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: statusTab === 'unpaid' ? 'var(--red)' : 'var(--card2)', color: statusTab === 'unpaid' ? '#fff' : 'var(--gray)' }}
-          onClick={() => setStatusTab('unpaid')}
-        >❌ Unpaid ({unpaidRows.length})</button>
-        <button
-          style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: statusTab === 'paid' ? 'var(--green)' : 'var(--card2)', color: statusTab === 'paid' ? '#fff' : 'var(--gray)' }}
-          onClick={() => setStatusTab('paid')}
-        >✅ Paid ({paidRows.length})</button>
+        <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+          <option value="all">All Status</option>
+          <option value="paid">Paid ({paidRows.length})</option>
+          <option value="unpaid">Unpaid ({unpaidRows.length})</option>
+        </select>
       </div>
 
       {totalNoAttendance > 0 && (
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={includeNoAttendance}
-            onChange={e => setIncludeNoAttendance(e.target.checked)}
-            style={{ marginTop: 2 }}
-          />
-          <span style={{ fontSize: 11, color: 'var(--gray)', lineHeight: 1.4 }}>
-            Include {totalNoAttendance} student{totalNoAttendance > 1 ? 's' : ''} with no attendance this period.
-            By default they're hidden from Paid/Unpaid since they haven't attended a class yet, so they may not owe fees.
-            Checking this adds them into the Unpaid list so you can still record a payment for them if needed.
-          </span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, cursor: 'pointer' }}>
+          <input type="checkbox" checked={includeNoAttendance} onChange={e => setIncludeNoAttendance(e.target.checked)} />
+          <span style={{ fontSize: 11, color: 'var(--gray)' }}>Include {totalNoAttendance} student{totalNoAttendance > 1 ? 's' : ''} with no attendance this period</span>
         </label>
       )}
 
@@ -380,13 +392,13 @@ export default function FeesTab() {
 
         {!loading && activeRows.length === 0 && (
           <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--gray)' }}>
-            {statusTab === 'paid' ? 'No paid students yet.' : 'No unpaid students 🎉'}
+            {statusFilter === 'paid' ? 'No paid students yet.' : statusFilter === 'unpaid' ? 'No unpaid students 🎉' : 'No students to show.'}
           </div>
         )}
 
         {!loading && viewMode === 'year' ? (
           periods.map(p => {
-            const pRows = p.rows.filter(r => r.paid === (statusTab === 'paid'));
+            const pRows = p.rows.filter(r => statusFilter === 'all' || r.paid === (statusFilter === 'paid'));
             if (pRows.length === 0) return null;
             return (
               <div key={p.monthKey}>
