@@ -18,7 +18,10 @@ function CustomTooltip({ active, payload, label, mode }) {
   );
 }
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export default function HomeTab() {
   const { visibleStudents, visibleSports, visibleBatches } = useAcademyData();
@@ -39,8 +42,8 @@ export default function HomeTab() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const endDay = isFutureMonth ? 0 : isCurrentMonth ? today.getDate() : daysInMonth;
   const dateRange = Array.from({ length: endDay }, (_, i) => {
-    const d = new Date(year, month, i + 1);
-    return d.toISOString().slice(0, 10);
+    const d = i + 1;
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   });
 
   useEffect(() => {
