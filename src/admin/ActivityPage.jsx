@@ -31,13 +31,13 @@ export default function ActivityPage() {
       setUserNames(nameMap);
 
       if (!isAdmin) {
-        // Staff only ever see their own activity. Older entries (written
-        // before actor_id existed) fall back to matching on the saved name
-        // or, for legacy rows, the login_id.
+        // Staff only ever see their own activity. New rows store the actor's
+        // display name directly in `user_id`; true-legacy rows store their
+        // login_id there instead — match against either.
         rows = rows.filter(l => {
           if (l.actor_id) return l.actor_id === appUser?.id;
           if (l.actor_name) return l.actor_name === appUser?.name;
-          if (l.user_id) return l.user_id === appUser?.login_id;
+          if (l.user_id) return l.user_id === appUser?.name || l.user_id === appUser?.login_id;
           return false;
         });
       }
