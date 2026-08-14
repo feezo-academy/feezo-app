@@ -491,28 +491,38 @@ export default function FeesTab() {
 function FeeRow({ row, isAdmin, onReminder, onThankYou, onEdit }) {
   const { student, fee, paid } = row;
   const editable = canEditFee(fee, isAdmin);
-  const btnLabel = paid && !editable ? '🔒 Paid' : (fee ? '✏️ Edit' : '💳 Pay');
+  // A fee row can exist purely because a reminder was logged against it (see
+  // recordMsgSent) — that shouldn't flip the button to "Edit". Only treat it
+  // as a real entry once someone has actually saved payment info.
+  const hasEntry = !!fee?.collected_by;
+  const btnLabel = paid && !editable ? '🔒 Paid' : (hasEntry ? '✏️ Edit' : '💳 Pay');
   const reminderCount = (fee?.msg_sent || []).filter(m => m.kind === 'reminder').length;
 
   return (
-    <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-      <div style={{ flex: 1, minWidth: 120 }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{student.name}</div>
-        <div style={{ fontSize: 12, color: 'var(--gray)' }}>
+    <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '10px 10px', marginBottom: 8, flexWrap: 'nowrap', overflow: 'hidden' }}>
+      <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name}</div>
+        <div style={{ fontSize: 10, color: 'var(--gray)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {student.batchLabel || student.sport}
           {fee?.method && <span> · {fee.method}</span>}
           {fee?.collected_by && <span style={{ color: 'var(--gold)' }}> · 👤 {fee.collected_by}</span>}
         </div>
       </div>
-      <span className={'badge ' + (paid ? 'badge-green' : 'badge-red')} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10 }}>
+      <span className={'badge ' + (paid ? 'badge-green' : 'badge-red')} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, flexShrink: 0, whiteSpace: 'nowrap' }}>
         {paid ? 'paid' : 'unpaid'}
       </span>
       {paid ? (
-        <button className="btn btn-xs btn-outline" onClick={() => onThankYou(row)}>🎉 Thank You</button>
+        <button className="btn btn-outline" title="Send thank-you" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }} onClick={() => onThankYou(row)}>🎉</button>
       ) : (
-        <button className="btn btn-xs btn-outline" onClick={() => onReminder(row)}>💬 Remind{reminderCount > 0 ? ` (${reminderCount})` : ''}</button>
+        <button className="btn btn-outline" title="Send reminder" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }} onClick={() => onReminder(row)}>💬{reminderCount > 0 ? ` ${reminderCount}` : ''}</button>
       )}
-      <button className="btn btn-xs btn-primary" disabled={paid && !editable} style={{ opacity: paid && !editable ? 0.5 : 1 }} onClick={() => editable && onEdit(row)}>
+      <button
+        className="btn btn-primary"
+        title={btnLabel}
+        style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap', opacity: paid && !editable ? 0.5 : 1 }}
+        disabled={paid && !editable}
+        onClick={() => editable && onEdit(row)}
+      >
         {btnLabel}
       </button>
     </div>
