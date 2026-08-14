@@ -97,10 +97,11 @@ export default function EnquiryTab() {
 
   const logEnquiry = async (message) => {
     try {
-      await supabase.from('audit_log').insert({
-        academy_id: academyId, actor_id: appUser?.id || null, actor_name: createdByName, action: message, description: message,
+      const { error } = await supabase.from('audit_log').insert({
+        academy_id: academyId, user_id: createdByName, role: isAdmin ? 'admin' : 'staff', action: message, detail: message,
       });
-    } catch { /* best-effort */ }
+      if (error) console.error('audit_log insert failed (enquiry):', error);
+    } catch (e) { console.error('audit_log insert threw (enquiry):', e); }
   };
 
   const staffScopedSports = useMemo(() => visibleSports.map(s => s.name), [visibleSports]);
@@ -416,19 +417,13 @@ export default function EnquiryTab() {
                 </div>
 
                 <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--gray)', marginBottom: 5 }}>
-                    📝 Staff Notes{(detail.staff_notes || []).length > 0 ? ` (${detail.staff_notes.length})` : ''}
-                  </label>
-                  {(detail.staff_notes || []).length > 0 && (
-                    <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 7, marginBottom: 7, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      {[...(detail.staff_notes || [])].reverse().map((n, i) => (
-                        <div key={i} style={{ fontSize: 12, background: 'var(--card2)', borderRadius: 6, padding: '6px 9px' }}>
-                          <div>{n.note}</div>
-                          <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 2 }}>{n.by} · {relTime(n.at)}</div>
-                        </div>
-                      ))}
+                  <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--gray)', marginBottom: 5 }}>📝 Staff Notes</label>
+                  {(detail.staff_notes || []).map((n, i) => (
+                    <div key={i} style={{ fontSize: 12, background: 'var(--card2)', borderRadius: 6, padding: '6px 9px', marginBottom: 5 }}>
+                      <div>{n.note}</div>
+                      <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 2 }}>{n.by} · {relTime(n.at)}</div>
                     </div>
-                  )}
+                  ))}
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input className="form-input" style={{ flex: 1 }} placeholder="Add a note…" value={noteDraft} onChange={e => setNoteDraft(e.target.value)} />
                     <button className="btn btn-outline btn-sm" onClick={saveNote}>Add</button>

@@ -138,17 +138,19 @@ export default function AttendanceTab() {
   // actually reads (actor_name, then action || description). Written to both
   // action and description so it shows up regardless of which one it prefers.
   // Never blocks the UI if the insert fails.
+  // Best-effort activity log. `audit_log` only has the legacy columns —
+  // user_id, role, action, detail — no actor_id/actor_name/description.
   const logAttendance = async (message) => {
     try {
       const { error } = await supabase.from('audit_log').insert({
         academy_id: academyId,
-        actor_id: appUser?.id || null,
-        actor_name: markedBy,
+        user_id: markedBy,
+        role: isAdmin ? 'admin' : 'staff',
         action: message,
-        description: message,
+        detail: message,
       });
-      if (error) { console.error('audit_log insert failed (attendance):', error); alert('AUDIT LOG ERROR: ' + error.message); }
-    } catch (e) { console.error('audit_log insert threw (attendance):', e); alert('AUDIT LOG THREW: ' + e.message); }
+      if (error) console.error('audit_log insert failed (attendance):', error);
+    } catch (e) { console.error('audit_log insert threw (attendance):', e); }
   };
 
   // ---- Fetch attendance for the current view ----
