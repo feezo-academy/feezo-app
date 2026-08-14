@@ -7,13 +7,18 @@ import StatDrilldownModal from '../components/StatDrilldownModal';
 
 function CustomTooltip({ active, payload, label, mode }) {
   if (!active || !payload || !payload.length) return null;
-  const primary = mode === 'attendance' ? payload.find(p => p.dataKey === 'present') : payload.find(p => p.dataKey === 'strength');
-  if (!primary) return null;
-  const dotColor = primary.color;
-  const primaryLabel = mode === 'attendance' ? 'Present' : 'Active';
+  const key1 = mode === 'attendance' ? 'present' : 'strength';
+  const key2 = mode === 'attendance' ? 'absent' : 'dropped';
+  const label1 = mode === 'attendance' ? 'Present' : 'Active';
+  const label2 = mode === 'attendance' ? 'Absent' : 'Dropped';
+  const p1 = payload.find(p => p.dataKey === key1);
+  const p2 = payload.find(p => p.dataKey === key2);
+  if (!p1 && !p2) return null;
   return (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 11px', fontSize: 12, boxShadow: 'var(--shadow)' }}>
-      <span style={{ color: dotColor }}>●</span> <strong>{primaryLabel}: {primary.value}</strong> (Day {label})
+      <div style={{ fontWeight: 700, marginBottom: 3 }}>Day {label}</div>
+      {p1 && <div><span style={{ color: p1.color }}>●</span> {label1}: {p1.value}</div>}
+      {p2 && <div><span style={{ color: p2.color }}>●</span> {label2}: {p2.value}</div>}
     </div>
   );
 }
