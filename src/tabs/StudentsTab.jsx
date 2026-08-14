@@ -98,6 +98,10 @@ export default function StudentsTab() {
     });
   };
 
+  const selectAll = () => {
+    setSelected(new Set(filtered.map(s => s.id)));
+  };
+
   const bulkDelete = async () => {
     if (!selected.size) return;
     if (!confirm(`Delete ${selected.size} student(s)?`)) return;
@@ -158,12 +162,45 @@ export default function StudentsTab() {
         </div>
       </div>
 
-      {isAdmin && selected.size > 0 && (
-        <div style={{ background: 'var(--accent)', border: '1px solid var(--accent2)', borderRadius: 10, padding: '9px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--gold)' }}>{selected.size} selected</div>
-          <button className="btn btn-xs btn-outline" onClick={() => setSelected(new Set())} style={{ fontSize: 11 }}>✕ Deselect All</button>
-          <button className="btn btn-xs btn-primary" onClick={() => setShowBulkEdit(true)} style={{ fontSize: 11 }}>✏️ Bulk Edit</button>
-          <button className="btn btn-xs" onClick={bulkDelete} style={{ fontSize: 11, background: 'var(--red)', color: '#fff', border: 'none' }}>🗑️ Delete</button>
+      {isAdmin && filtered.length > 0 && (
+        <div style={{ background: 'var(--accent)', border: '1px solid var(--accent2)', borderRadius: 10, padding: '7px 8px', marginBottom: 8 }}>
+          {selected.size > 0 && (
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>{selected.size} selected</div>
+          )}
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+            <button
+              className="btn btn-xs btn-outline"
+              onClick={selectAll}
+              disabled={selected.size === filtered.length}
+              style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: '6px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              ☑ Select All
+            </button>
+            <button
+              className="btn btn-xs btn-outline"
+              onClick={() => setSelected(new Set())}
+              disabled={selected.size === 0}
+              style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: '6px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              ✕ Deselect
+            </button>
+            <button
+              className="btn btn-xs btn-primary"
+              onClick={() => setShowBulkEdit(true)}
+              disabled={selected.size === 0}
+              style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: '6px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              ✏️ Edit
+            </button>
+            <button
+              className="btn btn-xs"
+              onClick={bulkDelete}
+              disabled={selected.size === 0}
+              style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: '6px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', background: 'var(--red)', color: '#fff', border: 'none', opacity: selected.size === 0 ? 0.5 : 1 }}
+            >
+              🗑️ Delete
+            </button>
+          </div>
         </div>
       )}
 
