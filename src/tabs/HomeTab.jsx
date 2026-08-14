@@ -261,34 +261,37 @@ export default function HomeTab() {
         </div>
       </div>
 
-      <div className="stats-grid" style={{ flexShrink: 0 }}>
-        <div className="stat-card grad stat-blue" style={{ cursor: 'pointer' }}
-          onClick={() => setDrilldown({ title: 'Active Students', icon: '👥', students: activeStudents })}>
-          <div className="stat-icon">👥</div>
-          <div className="stat-label">Total Students</div>
-          <div className="stat-val">{currentStrength}</div>
-        </div>
-        <div className="stat-card grad stat-orange" style={{ cursor: 'pointer' }}
-          onClick={() => setDrilldown({ title: 'Joined This Month', icon: '🆕', students: joinedStudents })}>
-          <div className="stat-icon">🆕</div>
-          <div className="stat-label">Joined</div>
-          <div className="stat-val">{joinedStudents.length}</div>
-        </div>
-        <div className="stat-card grad stat-green" style={{ cursor: 'pointer' }}
-          onClick={() => setDrilldown({ title: 'Fees Collected', icon: '✅', students: feeStudentList(collectedFees) })}>
-          <div className="stat-icon">✅</div>
-          <div className="stat-label">Fees Collected</div>
-          <div className="stat-val" style={{ fontSize: 16 }}>₹{collected.toLocaleString()}</div>
-        </div>
-        <div className="stat-card grad stat-red" style={{ cursor: 'pointer' }}
-          onClick={() => setDrilldown({ title: `Fee Pending (through ${cutoffLabel})`, icon: '⚠️', rows: pendingFeeRows })}>
-          <div className="stat-icon">⚠️</div>
-          <div className="stat-label">Fee Pending</div>
-          <div className="stat-val">{pending}</div>
-          <div style={{ fontSize: 9.5, opacity: 0.85, marginTop: 2, lineHeight: 1.3 }}>
-            Active students · dues through {cutoffLabel}
+      <div className="stats-grid" style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+        {[
+          { key: 'total', color: 'stat-blue', icon: '👥', label: 'Total Students', value: currentStrength,
+            onClick: () => setDrilldown({ title: 'Active Students', icon: '👥', students: activeStudents }) },
+          { key: 'joined', color: 'stat-orange', icon: '🆕', label: 'Joined', value: joinedStudents.length,
+            onClick: () => setDrilldown({ title: 'Joined This Month', icon: '🆕', students: joinedStudents }) },
+          { key: 'collected', color: 'stat-green', icon: '✅', label: 'Fees Collected', value: `₹${collected.toLocaleString()}`,
+            onClick: () => setDrilldown({ title: 'Fees Collected', icon: '✅', students: feeStudentList(collectedFees) }) },
+          { key: 'pending', color: 'stat-red', icon: '⚠️', label: 'Fee Pending', value: pending,
+            onClick: () => setDrilldown({ title: `Fee Pending (through ${cutoffLabel})`, icon: '⚠️', rows: pendingFeeRows }) },
+        ].map(tile => (
+          <div
+            key={tile.key}
+            className={`stat-card grad ${tile.color}`}
+            style={{
+              cursor: 'pointer', height: 68, boxSizing: 'border-box', padding: '8px 10px',
+              display: 'flex', flexDirection: 'column', justifyContent: 'space-between', overflow: 'hidden',
+            }}
+            onClick={tile.onClick}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+              <span style={{ fontSize: 12.5, lineHeight: 1 }}>{tile.icon}</span>
+              <span style={{ fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {tile.label}
+              </span>
+            </div>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800 }}>
+              {tile.value}
+            </div>
           </div>
-        </div>
+        ))}
       </div>
 
       <div className="card" style={{ marginTop: 10, padding: '12px 12px 8px' }}>
