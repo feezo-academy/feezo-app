@@ -16,6 +16,14 @@ function calcAge(dobIso) {
   return age;
 }
 
+function calcBMI(heightCm, weightKg) {
+  const h = parseFloat(heightCm);
+  const w = parseFloat(weightKg);
+  if (!h || !w || h <= 0 || w <= 0) return '';
+  const m = h / 100;
+  return (w / (m * m)).toFixed(1);
+}
+
 function Row({ label, value }) {
   if (!value) return null;
   return (
@@ -99,6 +107,9 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
           <Row label="Age" value={student.dob ? calcAge(student.dob) : student.age} />
           <Row label="Date of Birth" value={student.dob} />
           <Row label="Gender" value={student.gender} />
+          <Row label="Height" value={student.height ? `${student.height} cm` : ''} />
+          <Row label="Weight" value={student.weight ? `${student.weight} kg` : ''} />
+          <Row label="BMI" value={calcBMI(student.height, student.weight)} />
           <Row label="Parent / Guardian" value={student.parent} />
           <ContactRow label="Contact 1" value={canViewContact ? student.contact : null} />
           <ContactRow label="Contact 2" value={canViewContact ? student.contact2 : null} />
