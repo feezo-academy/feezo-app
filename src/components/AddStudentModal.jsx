@@ -23,6 +23,14 @@ function calcAge(dobIso) {
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+function calcBMI(heightCm, weightKg) {
+  const h = parseFloat(heightCm);
+  const w = parseFloat(weightKg);
+  if (!h || !w || h <= 0 || w <= 0) return '';
+  const m = h / 100;
+  return (w / (m * m)).toFixed(1);
+}
+
 function Field({ label, required, children }) {
   return (
     <div style={{ minWidth: 0 }}>
@@ -50,11 +58,12 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
   const isEdit = !!student;
   const [form, setForm] = useState(() => isEdit ? {
     roll_no: student.roll_no || '', name: student.name || '', dob: student.dob || '', gender: student.gender || '',
+    height: student.height || '', weight: student.weight || '',
     parent: student.parent || '', contact: student.contact || '', contact2: student.contact2 || '',
     address: student.address || '', join_date: student.join_date || todayIso(),
     sport: student.sport || sports[0]?.name || '', batchLabel: student.batchLabel || '',
   } : {
-    roll_no: '', name: initial?.name || '', dob: '', gender: '', parent: initial?.parent || '',
+    roll_no: '', name: initial?.name || '', dob: '', gender: '', height: '', weight: '', parent: initial?.parent || '',
     contact: initial?.contact || '', contact2: '', address: '',
     join_date: todayIso(), sport: initial?.sport || sports[0]?.name || '', batchLabel: '',
   });
@@ -64,6 +73,7 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
   const rollNoTouched = useRef(isEdit); // once user hand-edits roll_no, stop auto-filling it
 
   const age = calcAge(form.dob);
+  const bmi = calcBMI(form.height, form.weight);
   const batchOptions = batches.filter(b => b.sport === form.sport);
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -94,6 +104,8 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
       dob: form.dob || null,
       age: age ? String(age) : null,
       gender: form.gender || null,
+      height: form.height ? String(form.height) : null,
+      weight: form.weight ? String(form.weight) : null,
       parent: form.parent || null,
       contact: normalizePhone(form.contact),
       contact2: form.contact2 ? normalizePhone(form.contact2) : null,
@@ -178,6 +190,19 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>
                 </select>
+              </Field>
+            </div>
+            <div style={{ ...gridStyle, marginTop: 10 }}>
+              <Field label="Height (cm)">
+                <input className="form-input" type="number" inputMode="decimal" placeholder="e.g. 150"
+                  value={form.height} onChange={set('height')} />
+              </Field>
+              <Field label="Weight (kg)">
+                <input className="form-input" type="number" inputMode="decimal" placeholder="e.g. 45"
+                  value={form.weight} onChange={set('weight')} />
+              </Field>
+              <Field label="BMI">
+                <input className="form-input" value={bmi} placeholder="Auto" disabled style={{ opacity: .65, cursor: 'not-allowed' }} />
               </Field>
             </div>
             <div style={{ marginTop: 10 }}>
