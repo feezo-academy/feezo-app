@@ -147,8 +147,8 @@ export default function AttendanceTab() {
         action: message,
         description: message,
       });
-      if (error) console.error('audit_log insert failed (attendance):', error);
-    } catch (e) { console.error('audit_log insert threw (attendance):', e); }
+      if (error) { console.error('audit_log insert failed (attendance):', error); alert('AUDIT LOG ERROR: ' + error.message); }
+    } catch (e) { console.error('audit_log insert threw (attendance):', e); alert('AUDIT LOG THREW: ' + e.message); }
   };
 
   // ---- Fetch attendance for the current view ----
