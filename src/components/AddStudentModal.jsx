@@ -136,6 +136,12 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
     if (form.contact2 && !isValidPhone(form.contact2)) { setError('Contact Number 2 must be a 10-digit number (no +91 needed).'); return; }
     const validEnrollments = form.enrollments.filter(en => en.sport && en.batch);
     if (validEnrollments.length === 0) { setError('Select at least one sport and batch.'); return; }
+    const seenPairs = new Set();
+    for (const en of validEnrollments) {
+      const key = `${en.sport}||${en.batch}`;
+      if (seenPairs.has(key)) { setError(`"${en.sport} · ${en.batch}" is selected more than once.`); return; }
+      seenPairs.add(key);
+    }
     setSaving(true);
     setError('');
     const primary = validEnrollments[0];
@@ -165,18 +171,24 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
       join_date: form.join_date || null, active: true,
     }));
     if (isEdit) {
-      // Upsert on (student_id, sport) instead of delete-then-insert: updates
-      // existing sport enrollments in place (no risk of colliding with a row
-      // that wasn't actually removed) and only deletes sports that were
-      // dropped from the form.
-      const keepSports = validEnrollments.map(en => en.sport);
-      const { error: delErr } = await supabase.from('enrollments').delete()
-        .eq('student_id', studentId).eq('academy_id', academyId)
-        .not('sport', 'in', `(${keepSports.map(s => `"${s}"`).join(',')})`);
-      if (delErr) { setSaving(false); setError(delErr.message); return; }
+      // Diff against what's actually in the DB rather than delete-everything:
+      // only remove enrollments for sport+batch pairs no longer in the form,
+      // then upsert on (student_id, sport, batch) — a student can now hold
+      // multiple batches of the same sport, so batch is part of the key too.
+      const { data: existing, error: fetchErr } = await supabase.from('enrollments')
+        .select('id, sport, batch').eq('student_id', studentId).eq('academy_id', academyId);
+      if (fetchErr) { setSaving(false); setError(fetchErr.message); return; }
+      const keepKeys = new Set(validEnrollments.map(en => `${en.sport}||${en.batch}`));
+      const toDeleteIds = (existing || [])
+        .filter(e => !keepKeys.has(`${e.sport}||${e.batch}`))
+        .map(e => e.id);
+      if (toDeleteIds.length > 0) {
+        const { error: delErr } = await supabase.from('enrollments').delete().in('id', toDeleteIds);
+        if (delErr) { setSaving(false); setError(delErr.message); return; }
+      }
     }
     const { error: enrollErr } = await supabase.from('enrollments')
-      .upsert(enrollRows, { onConflict: 'student_id,sport' });
+      .upsert(enrollRows, { onConflict: 'student_id,sport,batch' });
     setSaving(false);
     if (enrollErr) { setError(enrollErr.message); return; }
 
