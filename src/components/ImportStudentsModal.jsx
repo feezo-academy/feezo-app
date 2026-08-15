@@ -172,7 +172,17 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       });
 
       let rollNo = get(cols, 'rollNo').toUpperCase();
-      if (!match) {
+      const selfRollNo = match ? (match.roll_no || '').toUpperCase() : '';
+      if (match) {
+        // Editing an existing student: if they typed a roll number that's
+        // actually different from this student's own, and it collides with
+        // a DIFFERENT existing student, reject the row rather than silently
+        // reassigning or letting it fail at the database.
+        if (rollNo && rollNo !== selfRollNo && previewRollNums.includes(rollNo)) {
+          rej.push({ label: name, reason: `Roll number "${rollNo}" is already used by another student`, raw });
+          continue;
+        }
+      } else {
         if (rollNo && previewRollNums.includes(rollNo)) rollNo = ''; // clashes, regenerate
         if (!rollNo) {
           const prefix = rollPrefix(matchedSport.name, matchedBatch.batchLabel);
@@ -271,6 +281,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
     if (!window.confirm(summary)) return;
 
     setSubmitting(true);
+    const failures = [];
     if (inserts.length) {
       const payload = inserts.map(r => ({
         academy_id: academyId, name: r.name, roll_no: r.rollNo,
@@ -280,30 +291,50 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         join_date: r.joinDate,
       }));
       const { data: savedRows, error: insErr } = await supabase.from('students').insert(payload).select();
-      if (!insErr && savedRows) {
+      if (insErr) {
+        // A single duplicate roll number fails the WHOLE batch insert (it's
+        // one statement) — surface that clearly rather than reporting success.
+        failures.push(insErr.code === '23505'
+          ? 'One or more new students have a roll number that already exists — none of the new students were added. Fix the roll number(s) and re-import.'
+          : `New students not saved: ${insErr.message}`);
+      } else if (savedRows) {
         const enrollRows = savedRows.map((row, i) => ({
           academy_id: academyId, student_id: row.id, sport: inserts[i].sport, batch: inserts[i].batchLabel,
           join_date: inserts[i].joinDate, active: true,
         }));
-        await supabase.from('enrollments').upsert(enrollRows, { onConflict: 'student_id,sport,batch' });
+        const { error: enrollErr } = await supabase.from('enrollments').upsert(enrollRows, { onConflict: 'student_id,sport,batch' });
+        if (enrollErr) failures.push(`New students saved, but enrollments failed: ${enrollErr.message}`);
       }
     }
     for (const r of updates) {
-      await supabase.from('students').update({
+      const { error: updErr } = await supabase.from('students').update({
         roll_no: r.rollNo || r._match.roll_no,
         batch: buildBatchKey(r.sport, r.batchLabel),
         contact: r.contact || r._match.contact, contact2: r.contact2 || r._match.contact2,
         address: r.address || r._match.address, gender: r.gender || r._match.gender,
         height: r.height || r._match.height, weight: r.weight || r._match.weight,
       }).eq('id', r._match.id);
+      if (updErr) {
+        failures.push(`${r.name}: ${updErr.code === '23505' ? `roll number "${r.rollNo}" already in use` : updErr.message}`);
+        continue;
+      }
       // Upsert rather than overwrite: adds/refreshes this row's sport+batch
       // enrollment without touching the student's other enrollments.
-      await supabase.from('enrollments').upsert({
+      const { error: enrollErr } = await supabase.from('enrollments').upsert({
         academy_id: academyId, student_id: r._match.id, sport: r.sport, batch: r.batchLabel,
         join_date: r.joinDate, active: true,
       }, { onConflict: 'student_id,sport,batch' });
+      if (enrollErr) failures.push(`${r.name} (enrollment): ${enrollErr.message}`);
     }
     setSubmitting(false);
+    if (failures.length > 0) {
+      // Report what actually failed rather than silently claiming success —
+      // rows that did succeed are already saved, so refresh the list, but
+      // keep the modal open so the user can see and fix the failures.
+      setError(`Some rows didn't save:\n${failures.join('\n')}`);
+      onImported();
+      return;
+    }
     onImported();
     onClose();
   };
@@ -324,7 +355,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} className="form-input" />
           </div>
 
-          {error && <div style={{ fontSize: 12.5, color: '#dc2626', background: 'rgba(220,38,38,.08)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '8px 10px' }}>⚠️ {error}</div>}
+          {error && <div style={{ fontSize: 12.5, color: '#dc2626', background: 'rgba(220,38,38,.08)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '8px 10px', whiteSpace: 'pre-line' }}>⚠️ {error}</div>}
 
           {rows && (
             <>
