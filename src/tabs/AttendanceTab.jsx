@@ -379,7 +379,7 @@ export default function AttendanceTab() {
 
   const markAll = async (status) => {
     if (isFutureDate) { window.alert('Cannot mark attendance for future dates.'); return; }
-    if (!sportFilter) { window.alert('Pick a specific sport above to use Mark All.'); return; }
+    if (!sportFilter || !batchFilter) { window.alert('Pick a specific sport and batch above to use Mark All.'); return; }
     const targets = bulkTargets;
     if (!targets.length) return;
     const label = status === 'P' ? 'Present' : 'Absent';
@@ -658,11 +658,11 @@ export default function AttendanceTab() {
           {!isFutureDate && (
             <div style={{ display: 'flex', gap: 12, fontWeight: 600 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
-                title={!sportFilter ? 'Pick a specific sport to use Mark All' : undefined}>
+                title={(!sportFilter || !batchFilter) ? 'Pick a specific sport and batch to use Mark All' : undefined}>
                 <input type="checkbox" checked={allPChecked} onChange={() => markAll('P')} /> All P
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
-                title={!sportFilter ? 'Pick a specific sport to use Mark All' : undefined}>
+                title={(!sportFilter || !batchFilter) ? 'Pick a specific sport and batch to use Mark All' : undefined}>
                 <input type="checkbox" checked={allAChecked} onChange={() => markAll('A')} /> All A
               </label>
             </div>
