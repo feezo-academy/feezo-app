@@ -11,8 +11,18 @@ const tomorrowIso = () => {
   return d.toISOString().slice(0, 10);
 };
 
-export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, onToggleNotif, hasNotif, enquiriesPath = '/enquiries' }) {
-  const { isAdmin, academyId, appUser } = useAuth();
+// shared urgency coloring: red if the date has passed, orange if today/tomorrow, else neutral
+function statusFor(dateStr) {
+  const today = todayIso();
+  const tomorrow = tomorrowIso();
+  if (dateStr < today) return { label: 'Overdue', color: '#ef4444' };
+  if (dateStr === today) return { label: 'Today', color: '#f97316' };
+  if (dateStr === tomorrow) return { label: 'Tomorrow', color: '#f97316' };
+  return { label: dateStr, color: 'var(--offwhite)' };
+}
+
+export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, onToggleNotif, hasNotif, enquiriesPath = '/enquiries', calendarPath = '/calendar' }) {
+  const { isAdmin, academyId, appUser, user } = useAuth();
   const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
 
@@ -24,15 +34,18 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const date = now.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  // ---- Reminder notifications (enquiry follow-ups) ----
-  const [reminderRows, setReminderRows] = useState([]);
   const [showBellMenu, setShowBellMenu] = useState(false); // small menu: list of alert categories
-  const [showAlertsWindow, setShowAlertsWindow] = useState(false); // scrollable list of all enquiry alerts
-  const [selected, setSelected] = useState(null); // the enquiry shown in the small detail popup
+  const [showEnquiryAlerts, setShowEnquiryAlerts] = useState(false);
+  const [showLeaveAlerts, setShowLeaveAlerts] = useState(false);
+  const [selectedEnquiry, setSelectedEnquiry] = useState(null);
+  const [selectedLeave, setSelectedLeave] = useState(null);
 
   const createdByName = appUser?.name || appUser?.id || 'Staff';
 
-  const loadReminders = async () => {
+  // ---- Enquiry follow-up reminders ----
+  const [enquiryRows, setEnquiryRows] = useState([]);
+
+  const loadEnquiries = async () => {
     if (!academyId) return;
     const { data, error } = await supabase
       .from('enquiries')
@@ -40,67 +53,87 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
       .eq('academy_id', academyId)
       .eq('archived', false)
       .not('reminder_date', 'is', null);
-    if (!error) setReminderRows(data || []);
+    if (!error) setEnquiryRows(data || []);
+  };
+
+  // ---- Leave requests awaiting approval ----
+  const [leaveRows, setLeaveRows] = useState([]);
+
+  const loadLeaves = async () => {
+    if (!academyId) return;
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .select('id, staff_id, staff_name, date, reason, status')
+      .eq('academy_id', academyId)
+      .eq('status', 'pending');
+    if (!error) setLeaveRows(data || []);
   };
 
   useEffect(() => {
-    loadReminders();
-    const t = setInterval(loadReminders, 60000); // keep the bell fresh without needing a page reload
+    loadEnquiries();
+    loadLeaves();
+    const t = setInterval(() => { loadEnquiries(); loadLeaves(); }, 60000); // keep the bell fresh without a page reload
     return () => clearInterval(t);
     // eslint-disable-next-line
   }, [academyId]);
 
-  const scopedReminders = useMemo(() => {
-    let list = reminderRows;
+  const enquiryPending = useMemo(() => {
+    let list = enquiryRows;
     if (!isAdmin) {
       list = list.filter(q => q.assigned_to === appUser?.id || q.created_by === createdByName || q.created_by === appUser?.id);
     }
-    return list;
-  }, [reminderRows, isAdmin, appUser, createdByName]);
+    return [...list].sort((a, b) => a.reminder_date.localeCompare(b.reminder_date));
+  }, [enquiryRows, isAdmin, appUser, createdByName]);
 
-  const { overdue, dueToday, dueTomorrow } = useMemo(() => {
+  const leavePending = useMemo(() => {
+    // admins see everyone's pending leave (needs their action); staff see only their own (awaiting approval)
+    let list = leaveRows;
+    if (!isAdmin) list = list.filter(l => l.staff_id === user?.id);
+    return [...list].sort((a, b) => a.date.localeCompare(b.date));
+  }, [leaveRows, isAdmin, user]);
+
+  const enquiryUrgency = useMemo(() => {
     const today = todayIso();
     const tomorrow = tomorrowIso();
     return {
-      overdue: scopedReminders.filter(q => q.reminder_date < today),
-      dueToday: scopedReminders.filter(q => q.reminder_date === today),
-      dueTomorrow: scopedReminders.filter(q => q.reminder_date === tomorrow),
+      overdue: enquiryPending.filter(q => q.reminder_date < today).length,
+      dueSoon: enquiryPending.filter(q => q.reminder_date === today || q.reminder_date === tomorrow).length,
     };
-  }, [scopedReminders]);
+  }, [enquiryPending]);
 
-  const pendingList = useMemo(() => (
-    [...overdue, ...dueToday, ...dueTomorrow] // most urgent first
-  ), [overdue, dueToday, dueTomorrow]);
-
-  const dotColor = overdue.length > 0 ? '#ef4444' : (dueToday.length + dueTomorrow.length > 0 ? '#f97316' : (hasNotif ? '#22c55e' : null));
-
-  const statusFor = (q) => {
+  const leaveUrgency = useMemo(() => {
     const today = todayIso();
-    if (q.reminder_date < today) return { label: 'Overdue', color: '#ef4444' };
-    if (q.reminder_date === today) return { label: 'Today', color: '#f97316' };
-    return { label: 'Tomorrow', color: '#f97316' };
-  };
+    const tomorrow = tomorrowIso();
+    return {
+      overdue: leavePending.filter(l => l.date < today).length,
+      dueSoon: leavePending.filter(l => l.date === today || l.date === tomorrow).length,
+    };
+  }, [leavePending]);
+
+  const dotFor = (urgency) => urgency.overdue > 0 ? '#ef4444' : (urgency.dueSoon > 0 ? '#f97316' : null);
+  const enquiryDot = dotFor(enquiryUrgency);
+  const leaveDot = dotFor(leaveUrgency);
+  const bellDot = enquiryDot === '#ef4444' || leaveDot === '#ef4444' ? '#ef4444'
+    : (enquiryDot || leaveDot) ? '#f97316'
+    : (hasNotif ? '#22c55e' : null);
 
   const openBell = () => {
     setShowBellMenu(s => !s);
     onToggleNotif?.();
   };
 
-  const openAlertsWindow = () => {
-    setShowBellMenu(false);
-    setShowAlertsWindow(true);
-  };
-
-  const openSelected = (q) => {
-    setShowAlertsWindow(false);
-    setSelected(q);
-  };
-
   const goToEnquiries = () => {
-    setSelected(null);
-    setShowAlertsWindow(false);
+    setSelectedEnquiry(null);
+    setShowEnquiryAlerts(false);
     setShowBellMenu(false);
-    navigate(enquiriesPath, { state: { focusEnquiryId: selected?.id } });
+    navigate(enquiriesPath, { state: { focusEnquiryId: selectedEnquiry?.id } });
+  };
+
+  const goToCalendar = () => {
+    setSelectedLeave(null);
+    setShowLeaveAlerts(false);
+    setShowBellMenu(false);
+    navigate(calendarPath, { state: { focusLeaveId: selectedLeave?.id } });
   };
 
   return (
@@ -130,24 +163,37 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                 <path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </svg>
-              {dotColor && <span style={{ position: 'absolute', top: 4, right: 4, width: 9, height: 9, background: dotColor, borderRadius: '50%', border: '2px solid var(--card2)' }} />}
+              {bellDot && <span style={{ position: 'absolute', top: 4, right: 4, width: 9, height: 9, background: bellDot, borderRadius: '50%', border: '2px solid var(--card2)' }} />}
             </button>
 
             {showBellMenu && (
               <>
                 <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={() => setShowBellMenu(false)} />
-                <div className="card" style={{ position: 'absolute', top: 40, right: 0, width: 220, padding: 6, zIndex: 999, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}>
+                <div className="card" style={{ position: 'absolute', top: 40, right: 0, width: 230, padding: 6, zIndex: 999, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}>
                   <div
-                    onClick={openAlertsWindow}
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: pendingList.length > 0 ? 'pointer' : 'default', opacity: pendingList.length > 0 ? 1 : 0.6 }}
-                    onMouseEnter={e => { if (pendingList.length > 0) e.currentTarget.style.background = 'var(--card2)'; }}
+                    onClick={() => { if (enquiryPending.length > 0) { setShowBellMenu(false); setShowEnquiryAlerts(true); } }}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: enquiryPending.length > 0 ? 'pointer' : 'default', opacity: enquiryPending.length > 0 ? 1 : 0.55 }}
+                    onMouseEnter={e => { if (enquiryPending.length > 0) e.currentTarget.style.background = 'var(--card2)'; }}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
                     <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {dotColor && <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />}
+                      {enquiryDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: enquiryDot, flexShrink: 0 }} />}
                       ⏰ Enquiry Alerts
                     </span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{pendingList.length}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{enquiryPending.length}</span>
+                  </div>
+
+                  <div
+                    onClick={() => { if (leavePending.length > 0) { setShowBellMenu(false); setShowLeaveAlerts(true); } }}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: leavePending.length > 0 ? 'pointer' : 'default', opacity: leavePending.length > 0 ? 1 : 0.55 }}
+                    onMouseEnter={e => { if (leavePending.length > 0) e.currentTarget.style.background = 'var(--card2)'; }}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {leaveDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: leaveDot, flexShrink: 0 }} />}
+                      🌴 Leave Alerts
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{leavePending.length}</span>
                   </div>
                 </div>
               </>
@@ -164,15 +210,16 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
         </div>
       </div>
 
-      {showAlertsWindow && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowAlertsWindow(false)}>
+      {/* ---- Enquiry Alerts table window ---- */}
+      {showEnquiryAlerts && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowEnquiryAlerts(false)}>
           <div className="card" style={{ width: '100%', maxWidth: 420, maxHeight: '78vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>⏰ Enquiry Alerts {pendingList.length > 0 && `(${pendingList.length})`}</div>
-              <button onClick={() => setShowAlertsWindow(false)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>⏰ Enquiry Alerts {enquiryPending.length > 0 && `(${enquiryPending.length})`}</div>
+              <button onClick={() => setShowEnquiryAlerts(false)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
             </div>
 
-            {pendingList.length === 0 ? (
+            {enquiryPending.length === 0 ? (
               <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>Nothing pending. 🎉</div>
             ) : (
               <>
@@ -182,10 +229,10 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
                   <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>REMINDER</div>
                 </div>
                 <div style={{ overflowY: 'auto', flex: 1 }}>
-                  {pendingList.map(q => {
-                    const s = statusFor(q);
+                  {enquiryPending.map(q => {
+                    const s = statusFor(q.reminder_date);
                     return (
-                      <div key={q.id} onClick={() => openSelected(q)}
+                      <div key={q.id} onClick={() => { setShowEnquiryAlerts(false); setSelectedEnquiry(q); }}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
                         onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -204,24 +251,92 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
         document.body
       )}
 
-      {selected && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelected(null)}>
+      {/* ---- Leave Alerts table window ---- */}
+      {showLeaveAlerts && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowLeaveAlerts(false)}>
+          <div className="card" style={{ width: '100%', maxWidth: 420, maxHeight: '78vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>🌴 Leave Alerts {leavePending.length > 0 && `(${leavePending.length})`}</div>
+              <button onClick={() => setShowLeaveAlerts(false)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {leavePending.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>Nothing pending. 🎉</div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 8, padding: '8px 16px', fontSize: 10.5, fontWeight: 700, color: 'var(--gray)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                  <div style={{ flex: 1.3, minWidth: 0 }}>NAME</div>
+                  <div style={{ flex: 1.2, minWidth: 0 }}>REASON</div>
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>DATE</div>
+                </div>
+                <div style={{ overflowY: 'auto', flex: 1 }}>
+                  {leavePending.map(l => {
+                    const s = statusFor(l.date);
+                    return (
+                      <div key={l.id} onClick={() => { setShowLeaveAlerts(false); setSelectedLeave(l); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ flex: 1.3, minWidth: 0, fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.staff_name}</div>
+                        <div style={{ flex: 1.2, minWidth: 0, fontSize: 11.5, color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.reason || '—'}</div>
+                        <div style={{ flex: 1, minWidth: 0, textAlign: 'right', fontSize: 10.5, fontWeight: 700, color: s.color, whiteSpace: 'nowrap' }}>{l.date}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ---- Enquiry detail popup ---- */}
+      {selectedEnquiry && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelectedEnquiry(null)}>
           <div className="card" style={{ width: '100%', maxWidth: 320, padding: 16 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-              <div style={{ fontWeight: 800, fontSize: 16 }}>{selected.name}</div>
-              <button onClick={() => setSelected(null)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{selectedEnquiry.name}</div>
+              <button onClick={() => setSelectedEnquiry(null)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
             </div>
-            {selected.phone && (
-              <a href={`tel:${selected.phone}`} style={{ display: 'block', fontSize: 13, color: 'var(--accent2)', textDecoration: 'none', marginBottom: 8 }}>📞 {selected.phone}</a>
+            {selectedEnquiry.phone && (
+              <a href={`tel:${selectedEnquiry.phone}`} style={{ display: 'block', fontSize: 13, color: 'var(--accent2)', textDecoration: 'none', marginBottom: 8 }}>📞 {selectedEnquiry.phone}</a>
             )}
             <div style={{ fontSize: 12.5, marginBottom: 16 }}>
               <span style={{ color: 'var(--gray)' }}>⏰ Reminder: </span>
-              <span style={{ fontWeight: 700, color: statusFor(selected).color }}>
-                {selected.reminder_date} ({statusFor(selected).label})
+              <span style={{ fontWeight: 700, color: statusFor(selectedEnquiry.reminder_date).color }}>
+                {selectedEnquiry.reminder_date} ({statusFor(selectedEnquiry.reminder_date).label})
               </span>
             </div>
             <button className="btn btn-primary" style={{ width: '100%', padding: 11 }} onClick={goToEnquiries}>
               ➜ Go to Enquiries
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ---- Leave detail popup ---- */}
+      {selectedLeave && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelectedLeave(null)}>
+          <div className="card" style={{ width: '100%', maxWidth: 320, padding: 16 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{selectedLeave.staff_name}</div>
+              <button onClick={() => setSelectedLeave(null)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
+            </div>
+            {selectedLeave.reason && (
+              <div style={{ fontSize: 12.5, color: 'var(--gray)', fontStyle: 'italic', marginBottom: 8 }}>{selectedLeave.reason}</div>
+            )}
+            <div style={{ fontSize: 12.5, marginBottom: 16 }}>
+              <span style={{ color: 'var(--gray)' }}>📆 Leave date: </span>
+              <span style={{ fontWeight: 700, color: statusFor(selectedLeave.date).color }}>
+                {selectedLeave.date} ({statusFor(selectedLeave.date).label})
+              </span>
+              <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: 'var(--gray)', background: 'var(--card2)', borderRadius: 5, padding: '2px 6px', textTransform: 'uppercase' }}>Pending</span>
+            </div>
+            <button className="btn btn-primary" style={{ width: '100%', padding: 11 }} onClick={goToCalendar}>
+              ➜ Go to Calendar
             </button>
           </div>
         </div>,
