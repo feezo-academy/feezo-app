@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { expandDates, isoToDisplay, todayIso } from '../lib/calendarDate';
+import PanelWindow from './PanelWindow';
 
 const DAY_CHIPS = [
   { v: 0, l: 'Sun' }, { v: 1, l: 'Mon' }, { v: 2, l: 'Tue' }, { v: 3, l: 'Wed' },
@@ -197,13 +198,13 @@ export default function TaskScheduleModal({ academyId, userId, sports, batches, 
   };
 
   return (
-    <div className="modal-overlay active" onClick={e => e.target === e.currentTarget && onClose()}>
+    <PanelWindow onClose={onClose}>
       <div
         className="modal"
         style={{
+          width: '100%',
           maxWidth: 520,
-          maxHeight: '90vh',
-          height: '90vh',
+          maxHeight: '100%',
           display: 'flex',
           flexDirection: 'column',
           padding: 0,
@@ -327,6 +328,6 @@ export default function TaskScheduleModal({ academyId, userId, sports, batches, 
           </button>
         </div>
       </div>
-    </div>
+    </PanelWindow>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/auditLog';
 import { todayIso } from '../lib/calendarDate';
+import PanelWindow from './PanelWindow';
 
 const STATUS_COLOR = { approved: '#22c55e', rejected: '#ef4444', pending: 'var(--gray)' };
 
@@ -49,6 +50,7 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
   const conflictsFor = (leave) => tasks.filter(t => t.staff_id === leave.staff_id && t.date === leave.date && t.status !== 'done' && t.status !== 'cancelled');
 
   const finalizeApprove = async (leave, reassignToId) => {
+    if (leave.staff_id === userId) { alert('You cannot approve your own leave request — another admin needs to review it.'); return; }
     setBusyId(leave.id);
     try {
       if (reassignToId) {
@@ -85,6 +87,7 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
   };
 
   const reject = async (leave) => {
+    if (leave.staff_id === userId) { alert('You cannot reject your own leave request — another admin needs to review it.'); return; }
     setBusyId(leave.id);
     try {
       const { error } = await supabase.from('leave_requests').update({ status: 'rejected', decided_at: new Date().toISOString() }).eq('id', leave.id);
@@ -156,8 +159,8 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
   };
 
   return (
-    <div className="modal-overlay active" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 420, maxHeight: '82vh', display: 'flex', flexDirection: 'column' }}>
+    <PanelWindow onClose={onClose}>
+      <div className="modal" style={{ width: '100%', maxWidth: 420, maxHeight: '100%', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-title">
           <span>🌴 Leave Requests</span>
           <button className="modal-close" onClick={onClose}>×</button>
@@ -176,6 +179,6 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
           )}
         </div>
       </div>
-    </div>
+    </PanelWindow>
   );
 }

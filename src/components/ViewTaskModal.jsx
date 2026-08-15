@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { calcDuration, fmt24to12, fmtTime12, isoToDisplay, isTaskMissed, SCHED_COLORS, SCHED_LABELS, urgencyFor } from '../lib/calendarDate';
+import PanelWindow from './PanelWindow';
 
 export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdit, onDelete, onStart, onDone, onReportMissed, onReviewMissed }) {
   const [reasonText, setReasonText] = useState('');
@@ -20,8 +21,8 @@ export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdi
   };
 
   return (
-    <div className="modal-overlay active" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 480 }}>
+    <PanelWindow onClose={onClose}>
+      <div className="modal" style={{ width: '100%', maxWidth: 480, maxHeight: '100%', overflowY: 'auto' }}>
         <div className="modal-title">
           <span>📋 Task Detail</span>
           <button className="modal-close" onClick={onClose}>×</button>
@@ -167,6 +168,6 @@ export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdi
           </div>
         )}
       </div>
-    </div>
+    </PanelWindow>
   );
 }

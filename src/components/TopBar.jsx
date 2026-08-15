@@ -174,7 +174,7 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
   };
 
   return (
-    <div className="topbar" style={{ gap: 8 }}>
+    <div className="topbar" data-app-header style={{ gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
         <div
           className="logo-img"

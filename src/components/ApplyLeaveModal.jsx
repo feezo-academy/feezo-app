@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/auditLog';
 import { todayIso } from '../lib/calendarDate';
+import PanelWindow from './PanelWindow';
 
 export default function ApplyLeaveModal({ academyId, userId, userName, myTasksByDate, onClose, onSubmitted }) {
   const [date, setDate] = useState(todayIso());
@@ -56,10 +57,10 @@ export default function ApplyLeaveModal({ academyId, userId, userName, myTasksBy
   };
 
   return (
-    <div className="modal-overlay active" onClick={e => e.target === e.currentTarget && onClose()}>
+    <PanelWindow onClose={onClose}>
       <div
         className="modal"
-        style={{ maxWidth: 400, maxHeight: '90vh', height: '90vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}
+        style={{ width: '100%', maxWidth: 400, maxHeight: '100%', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}
       >
         <div className="modal-title" style={{ padding: '16px 20px', flexShrink: 0, borderBottom: '1px solid var(--border)', margin: 0 }}>
           <span>🏖️ Apply for Leave</span>
@@ -95,6 +96,6 @@ export default function ApplyLeaveModal({ academyId, userId, userName, myTasksBy
           </button>
         </div>
       </div>
-    </div>
+    </PanelWindow>
   );
 }
