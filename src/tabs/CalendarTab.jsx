@@ -317,6 +317,7 @@ export default function CalendarTab() {
         <ViewTaskModal
           task={viewTask}
           isAdmin={isAdmin}
+          userId={user?.id}
           staffName={staffName}
           onClose={() => setViewTask(null)}
           onEdit={(t) => { setEditTask(t); setShowAssign(true); }}
