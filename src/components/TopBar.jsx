@@ -3,13 +3,12 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { addDays, isTaskMissed, todayIso, urgencyFor } from '../lib/calendarDate';
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
-const tomorrowIso = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
-};
+// Note: todayIso/tomorrowIso now come from calendarDate.js, which builds
+// dates from local parts instead of toISOString() — avoids the day-shift
+// bug in UTC+ locales that this file used to have.
+const tomorrowIso = () => addDays(todayIso(), 1);
 
 // shared urgency coloring: red if the date has passed, orange if today/tomorrow, else neutral
 function statusFor(dateStr) {
@@ -37,8 +36,10 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
   const [showBellMenu, setShowBellMenu] = useState(false); // small menu: list of alert categories
   const [showEnquiryAlerts, setShowEnquiryAlerts] = useState(false);
   const [showLeaveAlerts, setShowLeaveAlerts] = useState(false);
+  const [showTaskAlerts, setShowTaskAlerts] = useState(false);
   const [selectedEnquiry, setSelectedEnquiry] = useState(null);
   const [selectedLeave, setSelectedLeave] = useState(null);
+  const [selectedTask, setSelectedTask] = useState(null);
 
   const createdByName = appUser?.name || appUser?.id || 'Staff';
 
@@ -69,10 +70,24 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     if (!error) setLeaveRows(data || []);
   };
 
+  // ---- Task check-in/out warnings (missed entries + pending admin review) ----
+  const [taskRows, setTaskRows] = useState([]);
+
+  const loadTasks = async () => {
+    if (!academyId) return;
+    const { data, error } = await supabase
+      .from('week_schedules')
+      .select('id, task, date, in_time, out_time, status, staff_id, missed_reason, reviewed_at')
+      .eq('academy_id', academyId)
+      .in('status', ['scheduled', 'pending', 'in_progress']);
+    if (!error) setTaskRows(data || []);
+  };
+
   useEffect(() => {
     loadEnquiries();
     loadLeaves();
-    const t = setInterval(() => { loadEnquiries(); loadLeaves(); }, 60000); // keep the bell fresh without a page reload
+    loadTasks();
+    const t = setInterval(() => { loadEnquiries(); loadLeaves(); loadTasks(); }, 60000); // keep the bell fresh without a page reload
     return () => clearInterval(t);
     // eslint-disable-next-line
   }, [academyId]);
@@ -110,11 +125,26 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     };
   }, [leavePending]);
 
+  // A task shows up in the bell while it's still open (not done/cancelled)
+  // and urgencyFor() flags it — same logic that colors the task card in
+  // the Calendar tab. Reviewing a missed entry clears it here too.
+  const taskPending = useMemo(() => {
+    let list = taskRows.filter(t => !!urgencyFor(t));
+    if (!isAdmin) list = list.filter(t => t.staff_id === user?.id);
+    return [...list].sort((a, b) => a.date.localeCompare(b.date));
+  }, [taskRows, isAdmin, user]);
+
+  const taskUrgency = useMemo(() => ({
+    overdue: taskPending.filter(t => isTaskMissed(t) || t.missed_reason).length,
+    dueSoon: taskPending.filter(t => !isTaskMissed(t) && !t.missed_reason).length,
+  }), [taskPending]);
+
   const dotFor = (urgency) => urgency.overdue > 0 ? '#ef4444' : (urgency.dueSoon > 0 ? '#f97316' : null);
   const enquiryDot = dotFor(enquiryUrgency);
   const leaveDot = dotFor(leaveUrgency);
-  const bellDot = enquiryDot === '#ef4444' || leaveDot === '#ef4444' ? '#ef4444'
-    : (enquiryDot || leaveDot) ? '#f97316'
+  const taskDot = dotFor(taskUrgency);
+  const bellDot = [enquiryDot, leaveDot, taskDot].includes('#ef4444') ? '#ef4444'
+    : (enquiryDot || leaveDot || taskDot) ? '#f97316'
     : (hasNotif ? '#22c55e' : null);
 
   const openBell = () => {
@@ -134,6 +164,13 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     setShowLeaveAlerts(false);
     setShowBellMenu(false);
     navigate(calendarPath, { state: { focusLeaveId: selectedLeave?.id } });
+  };
+
+  const goToTask = () => {
+    setSelectedTask(null);
+    setShowTaskAlerts(false);
+    setShowBellMenu(false);
+    navigate(calendarPath, { state: { focusTaskId: selectedTask?.id } });
   };
 
   return (
@@ -194,6 +231,19 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
                       🌴 Leave Alerts
                     </span>
                     <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{leavePending.length}</span>
+                  </div>
+
+                  <div
+                    onClick={() => { if (taskPending.length > 0) { setShowBellMenu(false); setShowTaskAlerts(true); } }}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: taskPending.length > 0 ? 'pointer' : 'default', opacity: taskPending.length > 0 ? 1 : 0.55 }}
+                    onMouseEnter={e => { if (taskPending.length > 0) e.currentTarget.style.background = 'var(--card2)'; }}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {taskDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: taskDot, flexShrink: 0 }} />}
+                      ✅ Task Alerts
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{taskPending.length}</span>
                   </div>
                 </div>
               </>
@@ -292,6 +342,47 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
         document.body
       )}
 
+      {/* ---- Task Alerts table window ---- */}
+      {showTaskAlerts && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowTaskAlerts(false)}>
+          <div className="card" style={{ width: '100%', maxWidth: 420, maxHeight: '78vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>✅ Task Alerts {taskPending.length > 0 && `(${taskPending.length})`}</div>
+              <button onClick={() => setShowTaskAlerts(false)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {taskPending.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>Nothing pending. 🎉</div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 8, padding: '8px 16px', fontSize: 10.5, fontWeight: 700, color: 'var(--gray)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                  <div style={{ flex: 1.3, minWidth: 0 }}>TASK</div>
+                  <div style={{ flex: 1.2, minWidth: 0 }}>STATUS</div>
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>DATE</div>
+                </div>
+                <div style={{ overflowY: 'auto', flex: 1 }}>
+                  {taskPending.map(t => {
+                    const u = urgencyFor(t);
+                    return (
+                      <div key={t.id} onClick={() => { setShowTaskAlerts(false); setSelectedTask(t); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ flex: 1.3, minWidth: 0, fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.task || 'Untitled Task'}</div>
+                        <div style={{ flex: 1.2, minWidth: 0, fontSize: 11.5, color: u.color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.label}</div>
+                        <div style={{ flex: 1, minWidth: 0, textAlign: 'right', fontSize: 10.5, fontWeight: 700, color: u.color, whiteSpace: 'nowrap' }}>{t.date}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* ---- Enquiry detail popup ---- */}
       {selectedEnquiry && createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelectedEnquiry(null)}>
@@ -336,6 +427,31 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
               <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: 'var(--gray)', background: 'var(--card2)', borderRadius: 5, padding: '2px 6px', textTransform: 'uppercase' }}>Pending</span>
             </div>
             <button className="btn btn-primary" style={{ width: '100%', padding: 11 }} onClick={goToCalendar}>
+              ➜ Go to Calendar
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ---- Task detail popup ---- */}
+      {selectedTask && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelectedTask(null)}>
+          <div className="card" style={{ width: '100%', maxWidth: 320, padding: 16 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{selectedTask.task || 'Untitled Task'}</div>
+              <button onClick={() => setSelectedTask(null)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
+            </div>
+            {selectedTask.missed_reason && (
+              <div style={{ fontSize: 12.5, color: 'var(--gray)', fontStyle: 'italic', marginBottom: 8 }}>{selectedTask.missed_reason}</div>
+            )}
+            <div style={{ fontSize: 12.5, marginBottom: 16 }}>
+              <span style={{ color: 'var(--gray)' }}>📆 Date: </span>
+              <span style={{ fontWeight: 700, color: urgencyFor(selectedTask)?.color }}>
+                {selectedTask.date} ({urgencyFor(selectedTask)?.label})
+              </span>
+            </div>
+            <button className="btn btn-primary" style={{ width: '100%', padding: 11 }} onClick={goToTask}>
               ➜ Go to Calendar
             </button>
           </div>

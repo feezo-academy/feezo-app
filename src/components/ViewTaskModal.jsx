@@ -1,9 +1,23 @@
-import { calcDuration, fmt24to12, fmtTime12, isoToDisplay, SCHED_COLORS, SCHED_LABELS } from '../lib/calendarDate';
+import { useState } from 'react';
+import { calcDuration, fmt24to12, fmtTime12, isoToDisplay, isTaskMissed, SCHED_COLORS, SCHED_LABELS, urgencyFor } from '../lib/calendarDate';
 
-export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdit, onDelete, onStart, onDone }) {
+export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdit, onDelete, onStart, onDone, onReportMissed, onReviewMissed }) {
+  const [reasonText, setReasonText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
   if (!task) return null;
   const color = SCHED_COLORS[task.status] || SCHED_COLORS.scheduled;
   const label = SCHED_LABELS[task.status] || SCHED_LABELS.scheduled;
+  const urgency = urgencyFor(task);
+  const missed = isTaskMissed(task);
+  const awaitingReview = !!task.missed_reason && !task.reviewed_at;
+
+  const submitReason = async () => {
+    if (!reasonText.trim()) return;
+    setSubmitting(true);
+    await onReportMissed(task, reasonText.trim());
+    setSubmitting(false);
+  };
 
   return (
     <div className="modal-overlay active" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -36,6 +50,12 @@ export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdi
               <div style={{ color: 'var(--gray)', fontSize: 10, marginBottom: 2 }}>STATUS</div>
               <div style={{ fontWeight: 700, color }}>{label}</div>
             </div>
+            {urgency && (
+              <div style={{ background: `${urgency.color}22`, border: `1px solid ${urgency.color}44`, borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                <div style={{ color: 'var(--gray)', fontSize: 10, marginBottom: 2 }}>URGENCY</div>
+                <div style={{ fontWeight: 700, color: urgency.color }}>{urgency.label}</div>
+              </div>
+            )}
           </div>
 
           {task.note && (
@@ -74,6 +94,52 @@ export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdi
         <div style={{ fontSize: 11, color: 'var(--graydk)' }}>
           Assigned by {staffName(task.created_by)} on {isoToDisplay((task.created_at || '').slice(0, 10))}
         </div>
+
+        {/* ---- Staff: report a missed in/out with a reason ---- */}
+        {!isAdmin && missed && !task.missed_reason && (
+          <div style={{ marginTop: 12, padding: 12, background: '#ef444411', border: '1px solid #ef444444', borderRadius: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', marginBottom: 8 }}>
+              ⚠️ You missed the {task.status === 'in_progress' ? 'check-out' : 'check-in'} time for this task.
+            </div>
+            <textarea
+              className="form-input"
+              rows={2}
+              style={{ resize: 'none', marginBottom: 8 }}
+              placeholder="Why was this missed?"
+              value={reasonText}
+              onChange={e => setReasonText(e.target.value)}
+            />
+            <button
+              className="btn"
+              style={{ width: '100%', background: '#ef444422', color: '#ef4444', border: '1px solid #ef444444', fontWeight: 700, fontSize: 13, padding: 10 }}
+              disabled={!reasonText.trim() || submitting}
+              onClick={submitReason}
+            >{submitting ? 'Sending…' : '📩 Send Reason'}</button>
+          </div>
+        )}
+
+        {/* ---- Staff/admin: reason already sent, waiting on review ---- */}
+        {awaitingReview && (
+          <div style={{ marginTop: 12, padding: 12, background: '#a855f711', border: '1px solid #a855f744', borderRadius: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#a855f7', marginBottom: 4 }}>📩 Reason submitted — awaiting admin review</div>
+            <div style={{ fontSize: 12, color: 'var(--offwhite)', fontStyle: 'italic' }}>{task.missed_reason}</div>
+          </div>
+        )}
+
+        {/* ---- Admin: review and clear the warning ---- */}
+        {isAdmin && awaitingReview && (
+          <button
+            className="btn"
+            style={{ width: '100%', background: '#22c55e22', color: '#22c55e', border: '1px solid #22c55e44', marginTop: 10, fontSize: 13, padding: 11, fontWeight: 700 }}
+            onClick={() => { onReviewMissed(task); onClose(); }}
+          >✅ Mark Reviewed — Clear Warning</button>
+        )}
+
+        {isAdmin && task.reviewed_at && (
+          <div style={{ marginTop: 10, fontSize: 11, color: 'var(--gray)' }}>
+            Reviewed by {staffName(task.reviewed_by)} on {isoToDisplay((task.reviewed_at || '').slice(0, 10))}
+          </div>
+        )}
 
         {isAdmin && (
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
