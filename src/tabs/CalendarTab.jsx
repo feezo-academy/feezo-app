@@ -342,6 +342,7 @@ export default function CalendarTab() {
           academyId={academyId}
           isAdmin={isAdmin}
           userId={user?.id}
+          reviewerName={appUser?.name || user?.email}
           tasks={tasks}
           staffList={staffList}
           onClose={() => setShowLeaveList(false)}
