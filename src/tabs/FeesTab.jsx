@@ -326,7 +326,7 @@ export default function FeesTab() {
       setLoading(true);
       const from = viewMode === 'year' ? `${year}-01-01` : `${year}-${pad(month)}-01`;
       const to = viewMode === 'year' ? `${year}-12-31` : `${year}-${pad(month)}-${pad(daysInMonth(year, month))}`;
-      const { data } = await supabase.from('attendance').select('student_id,status,date')
+      const { data } = await supabase.from('attendance').select('student_id,status,date,sport')
         .eq('academy_id', academyId).gte('date', from).lte('date', to);
       setAttendance(data || []);
       setLoading(false);
