@@ -11,6 +11,8 @@ const HEADER_MAP = {
   sport: 'sport', sportname: 'sport', game: 'sport', discipline: 'sport',
   dob: 'dob', dateofbirth: 'dob', birthdate: 'dob', birthday: 'dob',
   gender: 'gender', sex: 'gender',
+  height: 'height', heightcm: 'height',
+  weight: 'weight', weightkg: 'weight',
   parent: 'parent', parentname: 'parent', guardian: 'parent', guardianname: 'parent',
   contact: 'contact', contact1: 'contact', phone: 'contact', mobile: 'contact', phonenumber: 'contact',
   contact2: 'contact2', phone2: 'contact2', altcontact: 'contact2', alternatecontact: 'contact2',
@@ -66,14 +68,14 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
   const [submitting, setSubmitting] = useState(false);
 
   const downloadTemplate = () => {
-    const headers = ['Name', 'RollNo', 'Sport', 'Batch', 'DOB', 'Gender', 'Parent', 'Contact', 'Contact2', 'School', 'JoinDate'];
+    const headers = ['Name', 'RollNo', 'Sport', 'Batch', 'DOB', 'Gender', 'Height', 'Weight', 'Parent', 'Contact', 'Contact2', 'School', 'JoinDate'];
     const today = new Date().toISOString().slice(0, 10);
     const firstSport = sports[0]?.name || 'Sport A';
     const firstBatch = batches.find(b => b.sport === firstSport)?.batchLabel || 'Batch 1';
-    const example1 = ['Arjun Kumar', '', firstSport, firstBatch, '2013-06-15', 'Male', 'Ramesh Kumar', '9876543210', '', 'ABC School', today];
+    const example1 = ['Arjun Kumar', '', firstSport, firstBatch, '2013-06-15', 'Male', '150', '45', 'Ramesh Kumar', '9876543210', '', 'ABC School', today];
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([headers, example1]);
-    ws['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }];
+    ws['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 8 }, { wch: 8 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Students');
     const instr = [
       ['HOW TO USE THIS TEMPLATE'], [''],
@@ -82,8 +84,10 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       ['3. Leave RollNo blank to auto-generate (Sport initial + Batch initial + number).'],
       ['4. Dates: YYYY-MM-DD or DD/MM/YYYY.'],
       ['5. Gender: Male, Female, or Other (M/F also accepted).'],
-      ['6. A row matching an existing student (shared contact, or same DOB+parent, or same name+sport+batch when no other info is given) updates that student instead of duplicating.'],
-      ['7. If nothing on the row actually differs from the existing student, it is marked "Skip" and left untouched.'],
+      ['6. Height in cm, Weight in kg. Both optional — leave blank if unknown.'],
+      ['7. A row matching an existing student (shared contact, or same DOB+parent, or same name+sport+batch when no other info is given) updates that student instead of duplicating.'],
+      ['8. A student can appear in multiple rows with different Sport/Batch — each row adds or updates that one enrollment, so a student can end up enrolled in several batches.'],
+      ['9. If nothing on the row actually differs from the existing student and enrollment, it is marked "Skip" and left untouched.'],
     ];
     const wsI = XLSX.utils.aoa_to_sheet(instr);
     wsI['!cols'] = [{ wch: 70 }];
@@ -92,15 +96,16 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
   };
 
   const downloadRejected = () => {
-    const headers = ['Name', 'RollNo', 'Sport', 'Batch', 'DOB', 'Gender', 'Parent', 'Contact', 'Contact2', 'School', 'JoinDate', 'Reason'];
+    const headers = ['Name', 'RollNo', 'Sport', 'Batch', 'DOB', 'Gender', 'Height', 'Weight', 'Parent', 'Contact', 'Contact2', 'School', 'JoinDate', 'Reason'];
     const rowsOut = rejected.map(r => [
       r.raw?.Name || '', r.raw?.RollNo || '', r.raw?.Sport || '', r.raw?.Batch || '',
-      r.raw?.DOB || '', r.raw?.Gender || '', r.raw?.Parent || '', r.raw?.Contact || '', r.raw?.Contact2 || '',
+      r.raw?.DOB || '', r.raw?.Gender || '', r.raw?.Height || '', r.raw?.Weight || '',
+      r.raw?.Parent || '', r.raw?.Contact || '', r.raw?.Contact2 || '',
       r.raw?.School || '', r.raw?.JoinDate || '', r.reason,
     ]);
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rowsOut]);
-    ws['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }, { wch: 34 }];
+    ws['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 8 }, { wch: 8 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }, { wch: 34 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Rejected');
     XLSX.writeFile(wb, 'Rejected_Students.xlsx');
   };
@@ -128,7 +133,8 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       const batchRaw = get(cols, 'batch');
       const raw = {
         Name: name, RollNo: get(cols, 'rollNo'), Sport: sportRaw, Batch: batchRaw,
-        DOB: get(cols, 'dob'), Gender: get(cols, 'gender'), Parent: get(cols, 'parent'), Contact: get(cols, 'contact'),
+        DOB: get(cols, 'dob'), Gender: get(cols, 'gender'), Height: get(cols, 'height'), Weight: get(cols, 'weight'),
+        Parent: get(cols, 'parent'), Contact: get(cols, 'contact'),
         Contact2: get(cols, 'contact2'), School: get(cols, 'address'), JoinDate: get(cols, 'joinDate'),
       };
       // Silently skip fully-blank rows — spreadsheet apps often leave empty
@@ -186,7 +192,8 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       parsed.push({
         _match: match || null,
         name, rollNo, sport: matchedSport.name, batchLabel: matchedBatch.batchLabel,
-        dob, gender: normalizeGender(get(cols, 'gender')), parent, contact, contact2, address: get(cols, 'address'),
+        dob, gender: normalizeGender(get(cols, 'gender')), height: get(cols, 'height'), weight: get(cols, 'weight'),
+        parent, contact, contact2, address: get(cols, 'address'),
         joinDate: excelDateToIso(get(cols, 'joinDate')) || new Date().toISOString().slice(0, 10),
       });
     }
@@ -203,14 +210,26 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       const effContact2 = r.contact2 || m.contact2 || '';
       const effAddress = r.address || m.address || '';
       const effGender = r.gender || m.gender || '';
+      const effHeight = r.height || m.height || '';
+      const effWeight = r.weight || m.weight || '';
       const effBatchKey = buildBatchKey(r.sport, r.batchLabel);
+      // A student can now hold several enrollments (multiple sport/batch rows),
+      // so "no changes" also requires this row's specific sport+batch to
+      // already exist for the student — not just that the legacy primary
+      // batch field matches.
+      const existingEnrollments = m.enrollments && m.enrollments.length > 0
+        ? m.enrollments : [{ sport: m.sport, batchLabel: m.batchLabel }];
+      const enrollmentExists = existingEnrollments.some(en => en.sport === r.sport && en.batchLabel === r.batchLabel);
       r._noChanges = (
         effRollNo === (m.roll_no || '') &&
         effContact === (m.contact || '') &&
         effContact2 === (m.contact2 || '') &&
         effAddress === (m.address || '') &&
         effGender === (m.gender || '') &&
-        effBatchKey === (m.batch || '')
+        effHeight === (m.height || '') &&
+        effWeight === (m.weight || '') &&
+        effBatchKey === (m.batch || '') &&
+        enrollmentExists
       );
     });
 
@@ -255,11 +274,19 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
     if (inserts.length) {
       const payload = inserts.map(r => ({
         academy_id: academyId, name: r.name, roll_no: r.rollNo,
-        batch: buildBatchKey(r.sport, r.batchLabel), dob: r.dob || null, gender: r.gender || null, parent: r.parent || null,
+        batch: buildBatchKey(r.sport, r.batchLabel), dob: r.dob || null, gender: r.gender || null,
+        height: r.height || null, weight: r.weight || null, parent: r.parent || null,
         contact: r.contact || null, contact2: r.contact2 || null, address: r.address || null,
         join_date: r.joinDate,
       }));
-      await supabase.from('students').insert(payload);
+      const { data: savedRows, error: insErr } = await supabase.from('students').insert(payload).select();
+      if (!insErr && savedRows) {
+        const enrollRows = savedRows.map((row, i) => ({
+          academy_id: academyId, student_id: row.id, sport: inserts[i].sport, batch: inserts[i].batchLabel,
+          join_date: inserts[i].joinDate, active: true,
+        }));
+        await supabase.from('enrollments').upsert(enrollRows, { onConflict: 'student_id,sport,batch' });
+      }
     }
     for (const r of updates) {
       await supabase.from('students').update({
@@ -267,7 +294,14 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         batch: buildBatchKey(r.sport, r.batchLabel),
         contact: r.contact || r._match.contact, contact2: r.contact2 || r._match.contact2,
         address: r.address || r._match.address, gender: r.gender || r._match.gender,
+        height: r.height || r._match.height, weight: r.weight || r._match.weight,
       }).eq('id', r._match.id);
+      // Upsert rather than overwrite: adds/refreshes this row's sport+batch
+      // enrollment without touching the student's other enrollments.
+      await supabase.from('enrollments').upsert({
+        academy_id: academyId, student_id: r._match.id, sport: r.sport, batch: r.batchLabel,
+        join_date: r.joinDate, active: true,
+      }, { onConflict: 'student_id,sport,batch' });
     }
     setSubmitting(false);
     onImported();
@@ -322,7 +356,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
               <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {rows.map((r, i) => (
                   <div key={i} className="card" style={{ padding: 10, fontSize: 12.5 }}>
-                    <strong>{r.name}</strong> · {r.rollNo} · {r.sport}/{r.batchLabel}{r.gender ? ` · ${r.gender}` : ''}
+                    <strong>{r.name}</strong> · {r.rollNo} · {r.sport}/{r.batchLabel}{r.gender ? ` · ${r.gender}` : ''}{r.height ? ` · ${r.height}cm` : ''}{r.weight ? ` · ${r.weight}kg` : ''}
                     <span style={{
                       float: 'right', fontWeight: 700,
                       color: r._noChanges ? 'var(--gray)' : r._match ? 'var(--accent2)' : 'var(--green, #16a34a)',
