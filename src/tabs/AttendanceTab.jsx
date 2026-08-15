@@ -546,8 +546,10 @@ export default function AttendanceTab() {
         </div>
       </div>
 
-      {/* Date navigator — now also houses the Sport/Batch/Status/Sort filters.
-          Always visible, doesn't hide on scroll. Sits above the search box. */}
+      {/* Date navigator — houses the Sport/Batch/Status/Sort filters plus the
+          date arrows and view-mode buttons, all folded into the collapsible
+          panel (panelOpen). The header row itself stays visible, doesn't hide
+          on scroll. Sits above the search box. */}
       <div className="card" style={{ padding: 10, marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
           onClick={() => setPanelOpen(p => !p)}>
@@ -561,40 +563,40 @@ export default function AttendanceTab() {
           </button>
         </div>
 
-        {/* Sport | Batch | Status | Sort — always visible within the card */}
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap', marginTop: 9 }}>
-          <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
-            value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter(''); }}>
-            <option value="">Sports</option>
-            {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-          </select>
-          <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
-            value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
-            <option value="">Batches</option>
-            {batchesForSport.map(b => <option key={b.id} value={b.name}>{b.batchLabel}</option>)}
-          </select>
-          {viewMode === 'day' && (
-            <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
-              value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-              <option value="all">Status</option>
-              <option value="present">Present</option>
-              <option value="absent">Absent</option>
-            </select>
-          )}
-          <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
-            value={sortBy} onChange={e => setSortBy(e.target.value)}>
-            <option value="roll_asc">Roll ↑</option>
-            <option value="roll_desc">Roll ↓</option>
-            <option value="name_az">A→Z</option>
-            <option value="name_za">Z→A</option>
-            <option value="present_first">✅ Present</option>
-            <option value="absent_first">❌ Absent</option>
-            <option value="unmarked_first">⏳ Unmarked</option>
-          </select>
-        </div>
-
         {panelOpen && (
           <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Sport | Batch | Status | Sort — now folded into the same collapsible panel as the date arrows */}
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+              <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
+                value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter(''); }}>
+                <option value="">Sports</option>
+                {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+              </select>
+              <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
+                value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
+                <option value="">Batches</option>
+                {batchesForSport.map(b => <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>)}
+              </select>
+              {viewMode === 'day' && (
+                <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
+                  value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                  <option value="all">Status</option>
+                  <option value="present">Present</option>
+                  <option value="absent">Absent</option>
+                </select>
+              )}
+              <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
+                value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                <option value="roll_asc">Roll ↑</option>
+                <option value="roll_desc">Roll ↓</option>
+                <option value="name_az">A→Z</option>
+                <option value="name_za">Z→A</option>
+                <option value="present_first">✅ Present</option>
+                <option value="absent_first">❌ Absent</option>
+                <option value="unmarked_first">⏳ Unmarked</option>
+              </select>
+            </div>
+
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <DateArrowGroup onPrev={() => shiftDay(-1)} onNext={() => shiftDay(1)}>
                 <select className="form-select" style={{ flex: 1, fontSize: 11, padding: '5px 4px' }}
