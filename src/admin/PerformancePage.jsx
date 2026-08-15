@@ -4,6 +4,7 @@ import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase } from '../lib/supabaseClient';
 import ProgramManagerModal from './ProgramManagerModal';
 import AwardPointsModal from './AwardPointsModal';
+import StudentChartsModal from './StudentChartsModal';
 
 const PRESENT_STATUS = 'P'; // adjust here if attendance uses a different code for "present"
 
@@ -12,7 +13,7 @@ function monthStartIso() { const d = new Date(); d.setDate(1); return d.toISOStr
 
 export default function PerformancePage() {
   const { academyId, isAdmin, user, appUser } = useAuth();
-  const { visibleStudents, visibleSports, visibleBatches } = useAcademyData();
+  const { visibleStudents, visibleSports } = useAcademyData();
 
   const [attendance, setAttendance] = useState([]);
   const [programs, setPrograms] = useState([]);
@@ -25,13 +26,13 @@ export default function PerformancePage() {
   const [dateTo, setDateTo] = useState(todayIso());
   const [search, setSearch] = useState('');
   const [selectedSports, setSelectedSports] = useState(new Set());
-  const [selectedBatches, setSelectedBatches] = useState(new Set());
   const [sortDir, setSortDir] = useState('desc'); // 'desc' = high to low
   const [filtersOpen, setFiltersOpen] = useState(false); // collapse bar
-  const [popup, setPopup] = useState(null); // 'sport' | 'batch' | 'sort' | null
+  const [popup, setPopup] = useState(null); // 'sport' | 'sort' | null
 
   const [showProgramManager, setShowProgramManager] = useState(false);
   const [awardFor, setAwardFor] = useState(null); // row currently awarding points for
+  const [chartsFor, setChartsFor] = useState(null); // row currently viewing charts for
 
   // default: all sports/batches selected once loaded
   useEffect(() => {
@@ -39,11 +40,6 @@ export default function PerformancePage() {
       setSelectedSports(new Set(visibleSports.map(s => s.name)));
     }
   }, [visibleSports]); // eslint-disable-line
-  useEffect(() => {
-    if (visibleBatches.length && selectedBatches.size === 0) {
-      setSelectedBatches(new Set(visibleBatches.map(b => b.name)));
-    }
-  }, [visibleBatches]); // eslint-disable-line
 
   const load = async () => {
     if (!academyId) return;
@@ -146,12 +142,9 @@ export default function PerformancePage() {
     if (selectedSports.size > 0 && selectedSports.size < visibleSports.length) {
       list = list.filter(r => selectedSports.has(r.sport));
     }
-    if (selectedBatches.size > 0 && selectedBatches.size < visibleBatches.length) {
-      list = list.filter(r => selectedBatches.has(r.batchKey));
-    }
     list = [...list].sort((a, b) => sortDir === 'desc' ? b.finalScore - a.finalScore : a.finalScore - b.finalScore);
     return list;
-  }, [rows, search, selectedSports, selectedBatches, sortDir, visibleSports, visibleBatches]);
+  }, [rows, search, selectedSports, sortDir, visibleSports]);
 
   const toggleSport = (name) => {
     setSelectedSports(prev => {
@@ -160,14 +153,6 @@ export default function PerformancePage() {
       return next;
     });
   };
-  const toggleBatch = (key) => {
-    setSelectedBatches(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
-
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -213,13 +198,10 @@ export default function PerformancePage() {
             <input type="date" className="form-input" style={{ flex: 1, fontSize: 11, padding: '7px 6px' }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
           </div>
 
-          {/* sport / batch / sort — single row, open popup on click */}
+          {/* sport / sort — single row, open popup on click */}
           <div style={{ display: 'flex', gap: 6, marginBottom: isAdmin ? 12 : 0 }}>
             <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => setPopup('sport')}>
               Sport {selectedSports.size < visibleSports.length ? `(${selectedSports.size})` : ''}
-            </button>
-            <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => setPopup('batch')}>
-              Batch {selectedBatches.size < visibleBatches.length ? `(${selectedBatches.size})` : ''}
             </button>
             <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => setPopup('sort')}>
               Sort
@@ -256,7 +238,7 @@ export default function PerformancePage() {
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div style={{ fontSize: 13, fontWeight: 800 }}>
-                {popup === 'sport' ? 'Select Sport' : popup === 'batch' ? 'Select Batch' : 'Sort By'}
+                {popup === 'sport' ? 'Select Sport' : 'Sort By'}
               </div>
               <button onClick={() => setPopup(null)} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
             </div>
@@ -265,13 +247,6 @@ export default function PerformancePage() {
               <label key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
                 <input type="checkbox" checked={selectedSports.has(s.name)} onChange={() => toggleSport(s.name)} />
                 {s.name}
-              </label>
-            ))}
-
-            {popup === 'batch' && visibleBatches.map(b => (
-              <label key={b.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={selectedBatches.has(b.name)} onChange={() => toggleBatch(b.name)} />
-                {b.sport} · {b.batchLabel}
               </label>
             ))}
 
@@ -294,11 +269,18 @@ export default function PerformancePage() {
       {!loading && filteredRows.map((r, i) => (
         <div key={r.key} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
           onClick={() => setAwardFor(r)}>
-          <div style={{ width: 28, height: 28, borderRadius: '50%', background: i < 3 ? 'var(--gold)' : 'var(--card2)', color: i < 3 ? '#fff' : 'var(--gray)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+          <div style={{ width: 28, height: 28, borderRadius: '50%', background: i < 3 ? '#2563eb' : '#1e3a5f', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
             {i + 1}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700 }}>{r.student.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ fontWeight: 700 }}>{r.student.name}</div>
+              <button
+                onClick={(e) => { e.stopPropagation(); setChartsFor(r); }}
+                title="View charts"
+                style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', fontSize: 13, lineHeight: 1, color: '#2563eb', flexShrink: 0 }}
+              >📊</button>
+            </div>
             <div style={{ fontSize: 11, color: 'var(--gray)' }}>{r.sport} · {r.batchLabel}</div>
             <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 2 }}>
               📆 {r.attendancePct.toFixed(0)}% · 🏆 {r.coursePct.toFixed(0)}%
@@ -335,6 +317,22 @@ export default function PerformancePage() {
           existingPoints={points.filter(p => p.student_id === awardFor.student.id)}
           onClose={() => setAwardFor(null)}
           onChanged={load}
+        />
+      )}
+
+      {chartsFor && (
+        <StudentChartsModal
+          row={chartsFor}
+          academyId={academyId}
+          userId={user?.id}
+          userName={appUser?.name || user?.email}
+          canEdit={isAdmin}
+          totalPoints={totalPointsBySport[chartsFor.sport] || 0}
+          earnedPoints={earnedPointsByStudentSport[`${chartsFor.student.id}|${chartsFor.sport}`] || 0}
+          pointsRecords={points.filter(p => p.student_id === chartsFor.student.id)}
+          challenges={challenges.filter(c => c.sport === chartsFor.sport)}
+          attendanceRecords={attendance.filter(a => a.student_id === chartsFor.student.id && a.sport === chartsFor.sport)}
+          onClose={() => setChartsFor(null)}
         />
       )}
     </div>
