@@ -28,6 +28,13 @@ function formatDDMMYYYY(iso) {
   return `${d}/${m}/${y}`;
 }
 
+// Composite key used to line up an imported cell with any already-saved
+// attendance row for the same student+date+sport+batch. Trimmed + lowercased
+// so a casing/whitespace difference doesn't cause a real update to be
+// misread as a brand-new insert (or vice versa).
+const normKey = (v) => (v || '').toString().trim().toLowerCase();
+const rowKey = (studentId, date, sport, batch) => `${studentId}::${date}::${normKey(sport)}::${normKey(batch)}`;
+
 function parseCSVLine(line) {
   const cols = []; let cur = '', inQ = false;
   for (let i = 0; i < line.length; i++) {
@@ -41,20 +48,21 @@ function parseCSVLine(line) {
 }
 
 export default function ImportAttendanceModal({ academyId, existingStudents, sportFilter, batchFilter, markedBy, onClose, onImported }) {
-  const [preview, setPreview] = useState(null); // { dateColumns, studentRows, markCount, rejected }
+  const [preview, setPreview] = useState(null); // { dateColumns, studentRows, insertCount, updateCount, unchangedCount, rejected }
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [confirming, setConfirming] = useState(false); // true once user has reviewed the summary and is on the final "are you sure" step
 
   const downloadTemplate = () => {
     // Sample data comes from the admin/staff's own visible students, preferring
     // the currently filtered sport/batch, otherwise the first sport+batch found.
     let sampleSource = existingStudents;
     if (sportFilter) sampleSource = sampleSource.filter(s => s.sport === sportFilter);
-    if (batchFilter) sampleSource = sampleSource.filter(s => s.batch === batchFilter);
+    if (batchFilter) sampleSource = sampleSource.filter(s => s.batchLabel === batchFilter);
     if (!sampleSource.length) {
       const firstSport = existingStudents[0]?.sport;
-      const firstBatch = existingStudents.find(s => s.sport === firstSport)?.batch;
-      sampleSource = existingStudents.filter(s => s.sport === firstSport && s.batch === firstBatch);
+      const firstBatch = existingStudents.find(s => s.sport === firstSport)?.batchLabel;
+      sampleSource = existingStudents.filter(s => s.sport === firstSport && s.batchLabel === firstBatch);
     }
     const sample = sampleSource.slice(0, 2);
 
@@ -86,7 +94,7 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
     XLSX.writeFile(wb, 'Attendance_Import_Template.xlsx');
   };
 
-  const parseText = (text) => {
+  const parseText = async (text) => {
     const lines = text.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 2) { setError('File must have a header row and at least one data row.'); return; }
     const headerCols = parseCSVLine(lines[0]);
@@ -116,9 +124,8 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
     }
 
     const get = (cols, key) => (colMap[key] !== undefined ? (cols[colMap[key]] || '').trim() : '');
-    const studentRows = []; // { student, marks: [{iso, status}] }
+    const matchedRows = []; // { student, cells: [{iso, status}] } — pre-classification
     const rejected = [];
-    let markCount = 0;
 
     for (let i = 1; i < lines.length; i++) {
       const cols = parseCSVLine(lines[i]);
@@ -126,7 +133,7 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
       const rollNo = get(cols, 'rollNo');
       const sportRaw = get(cols, 'sport');
       const batchRaw = get(cols, 'batch');
-      if (!name && !rollNo) { rejected.push({ label: `Row ${i + 1}`, reason: 'Missing Name and RollNo' }); continue; }
+      if (!name && !rollNo) { rejected.push({ label: `Row ${i + 1}`, reason: 'Missing Name and RollNo', kind: 'reject' }); continue; }
 
       let student = null;
       if (rollNo) student = existingStudents.find(s => (s.roll_no || '').toLowerCase() === rollNo.toLowerCase());
@@ -137,35 +144,94 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
           (!sportRaw || s.sport?.toLowerCase() === sportRaw.toLowerCase())
         );
       }
-      if (!student) { rejected.push({ label: name || rollNo, reason: 'Student not found' }); continue; }
+      if (!student) { rejected.push({ label: name || rollNo, reason: 'Student not found in this academy', kind: 'reject' }); continue; }
 
       if (batchRaw && student.batchLabel?.toLowerCase() !== batchRaw.toLowerCase()) {
-        rejected.push({ label: student.name, reason: `Batch "${batchRaw}" doesn't match student's batch (${student.batchLabel})` });
+        rejected.push({ label: student.name, reason: `Batch "${batchRaw}" doesn't match student's batch (${student.batchLabel})`, kind: 'reject' });
         continue;
       }
       if (sportRaw && student.sport?.toLowerCase() !== sportRaw.toLowerCase()) {
-        rejected.push({ label: student.name, reason: `Sport "${sportRaw}" doesn't match student's sport (${student.sport})` });
+        rejected.push({ label: student.name, reason: `Sport "${sportRaw}" doesn't match student's sport (${student.sport})`, kind: 'reject' });
         continue;
       }
 
-      const marks = [];
+      const cells = [];
       validDateCols.forEach(dc => {
         const val = (cols[dc.index] || '').trim().toUpperCase();
-        if (val === 'P') { marks.push({ iso: dc.iso, status: 'P' }); markCount++; }
-        else if (val === 'A') { marks.push({ iso: dc.iso, status: 'A' }); markCount++; }
-        // blank or anything else -> skip that cell
+        if (val === 'P' || val === 'A') cells.push({ iso: dc.iso, status: val });
+        // blank or anything else -> that single cell is just not marked, no reason needed
       });
-      if (marks.length) studentRows.push({ student, marks });
+      if (!cells.length) {
+        rejected.push({ label: student.name, reason: 'No P/A value in any date column', kind: 'skip' });
+        continue;
+      }
+      matchedRows.push({ student, cells });
     }
 
-    setPreview({ dateColumns: validDateCols.map(d => d.iso), futureDatesSkipped: futureDateCols.map(d => d.iso), studentRows, markCount, rejected });
+    if (!matchedRows.length) {
+      setPreview({
+        dateColumns: validDateCols.map(d => d.iso), futureDatesSkipped: futureDateCols.map(d => d.iso),
+        studentRows: [], rejected, insertCount: 0, updateCount: 0, unchangedCount: 0,
+      });
+      setError('');
+      return;
+    }
+
+    // Check what's already saved so each cell can be classified as a brand-new
+    // insert vs. an update to (or no change from) an existing mark, instead of
+    // blindly overwriting. Matched on student+date+sport+batch — the same
+    // composite key attendance is actually stored/upserted under — so a
+    // student with two enrollments on the same date is compared correctly
+    // and one sport's mark never gets confused with the other's.
+    const studentIds = [...new Set(matchedRows.map(r => r.student.id))];
+    const isoDates = [...new Set(matchedRows.flatMap(r => r.cells.map(c => c.iso)))];
+    const existingMap = {};
+    try {
+      const { data: existingRows, error: fetchErr } = await supabase.from('attendance')
+        .select('student_id,date,sport,batch,status')
+        .eq('academy_id', academyId)
+        .in('student_id', studentIds)
+        .in('date', isoDates);
+      if (fetchErr) throw fetchErr;
+      (existingRows || []).forEach(r => {
+        existingMap[rowKey(r.student_id, r.date, r.sport, r.batch)] = r.status;
+      });
+    } catch (err) {
+      setError(`Could not check existing attendance before import: ${err.message}`);
+      return;
+    }
+
+    let insertCount = 0, updateCount = 0, unchangedCount = 0;
+    const studentRows = matchedRows.map(({ student, cells }) => {
+      const marks = cells.map(c => {
+        const existingStatus = existingMap[rowKey(student.id, c.iso, student.sport, student.batchLabel)];
+        let action;
+        if (existingStatus === undefined) { action = 'insert'; insertCount++; }
+        else if (existingStatus === c.status) { action = 'unchanged'; unchangedCount++; }
+        else { action = 'update'; updateCount++; }
+        return { iso: c.iso, status: c.status, action, previousStatus: existingStatus };
+      });
+      return {
+        student, marks,
+        insertCount: marks.filter(m => m.action === 'insert').length,
+        updateCount: marks.filter(m => m.action === 'update').length,
+        unchangedCount: marks.filter(m => m.action === 'unchanged').length,
+      };
+    });
+
+    setPreview({
+      dateColumns: validDateCols.map(d => d.iso), futureDatesSkipped: futureDateCols.map(d => d.iso),
+      studentRows, rejected, insertCount, updateCount, unchangedCount,
+    });
     setError('');
   };
 
-  const handleFile = (e) => {
+  const handleFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setError('');
+    setPreview(null);
+    setConfirming(false);
     const ext = file.name.split('.').pop().toLowerCase();
     const reader = new FileReader();
     if (ext === 'csv') {
@@ -191,16 +257,21 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
     const payload = [];
     preview.studentRows.forEach(({ student, marks }) => {
       marks.forEach(m => {
+        if (m.action === 'unchanged') return; // nothing to write — already saved as-is
         payload.push({
           academy_id: academyId, student_id: student.id, date: m.iso,
-          status: m.status, sport: student.sport, marked_by: markedBy || 'Import',
+          status: m.status, sport: student.sport, batch: student.batchLabel, marked_by: markedBy || 'Import',
         });
       });
     });
-    // Upsert in chunks to stay well under request size limits.
+    if (!payload.length) { setSubmitting(false); onImported(); onClose(); return; }
+    // Upsert in chunks to stay well under request size limits. Conflict target
+    // includes sport+batch — matching the real unique constraint on
+    // `attendance` — so a student's two different enrollments on the same
+    // date each get their own row instead of one overwriting the other.
     let hadError = false;
     for (let i = 0; i < payload.length; i += 500) {
-      const { error } = await supabase.from('attendance').upsert(payload.slice(i, i + 500), { onConflict: 'academy_id,student_id,date' });
+      const { error } = await supabase.from('attendance').upsert(payload.slice(i, i + 500), { onConflict: 'academy_id,student_id,date,sport,batch' });
       if (error) hadError = true;
     }
     // Best-effort activity log entry, same shape as AttendanceTab's logAttendance —
@@ -209,12 +280,12 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
       await supabase.from('audit_log').insert({
         academy_id: academyId,
         actor_name: markedBy || 'Import',
-        action: `Imported ${preview.markCount} attendance mark(s) across ${preview.studentRows.length} student(s)`,
-        description: `Imported ${preview.markCount} attendance mark(s) across ${preview.studentRows.length} student(s)`,
+        action: `Imported attendance: ${preview.insertCount} new, ${preview.updateCount} updated, across ${preview.studentRows.length} student(s)`,
+        description: `Imported attendance: ${preview.insertCount} new, ${preview.updateCount} updated, across ${preview.studentRows.length} student(s)`,
       });
     } catch { /* audit log is best-effort */ }
     setSubmitting(false);
-    if (hadError) { setError('Some rows failed to save — please check and re-import if needed.'); setSubmitting(false); return; }
+    if (hadError) { setError('Some rows failed to save — please check and re-import if needed.'); return; }
     onImported();
     onClose();
   };
@@ -257,45 +328,108 @@ export default function ImportAttendanceModal({ academyId, existingStudents, spo
                   🔒 Future dates are not allowed — {preview.futureDatesSkipped.length} column(s) skipped: {preview.futureDatesSkipped.map(formatDDMMYYYY).join(', ')}
                 </div>
               )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>Students</div>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: 'var(--green, #16a34a)' }}>{preview.studentRows.length}</div>
-                </div>
-                <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>Marks</div>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: 'var(--accent2)' }}>{preview.markCount}</div>
-                </div>
-                <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>Rejected</div>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: '#dc2626' }}>{preview.rejected.length}</div>
-                </div>
-              </div>
+              {(() => {
+                const skippedRows = preview.rejected.filter(r => r.kind === 'skip');
+                const rejectedRows = preview.rejected.filter(r => r.kind !== 'skip');
+                const skipTotal = preview.unchangedCount + skippedRows.length;
+                return (
+                  <>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <div className="card" style={{ flex: 1, padding: 8, textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: 'var(--gray)' }}>Insert</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: '#16a34a' }}>{preview.insertCount}</div>
+                      </div>
+                      <div className="card" style={{ flex: 1, padding: 8, textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: 'var(--gray)' }}>Update</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: '#d97706' }}>{preview.updateCount}</div>
+                      </div>
+                      <div className="card" style={{ flex: 1, padding: 8, textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: 'var(--gray)' }}>Skip</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--gray)' }}>{skipTotal}</div>
+                      </div>
+                      <div className="card" style={{ flex: 1, padding: 8, textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: 'var(--gray)' }}>Reject</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: '#dc2626' }}>{rejectedRows.length}</div>
+                      </div>
+                    </div>
 
-              <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {preview.studentRows.map((r, i) => (
-                  <div key={i} className="card" style={{ padding: 10, fontSize: 12.5 }}>
-                    <strong>{r.student.name}</strong> · #{r.student.roll_no} · {r.student.sport}/{r.student.batchLabel}
-                    <span style={{ float: 'right', fontWeight: 700, color: 'var(--green, #16a34a)' }}>{r.marks.length} day(s)</span>
-                  </div>
-                ))}
-                {preview.rejected.map((r, i) => (
-                  <div key={'r' + i} className="card" style={{ padding: 10, fontSize: 12.5, opacity: .7 }}>
-                    <strong>{r.label}</strong> — {r.reason}
-                    <span style={{ float: 'right', fontWeight: 700, color: '#dc2626' }}>Skipped</span>
-                  </div>
-                ))}
-              </div>
+                    <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {preview.studentRows.map((r, i) => (
+                        <div key={'m' + i} className="card" style={{ padding: 10, fontSize: 12.5 }}>
+                          <div><strong>{r.student.name}</strong> · #{r.student.roll_no} · {r.student.sport}/{r.student.batchLabel}</div>
+                          <div style={{ marginTop: 5, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                            {r.insertCount > 0 && (
+                              <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: 'rgba(22,163,74,.12)', color: '#16a34a' }}>
+                                + {r.insertCount} new
+                              </span>
+                            )}
+                            {r.updateCount > 0 && (
+                              <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: 'rgba(217,119,6,.12)', color: '#d97706' }}>
+                                ↻ {r.updateCount} update
+                              </span>
+                            )}
+                            {r.unchangedCount > 0 && (
+                              <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: 'var(--card2)', color: 'var(--gray)' }}>
+                                = {r.unchangedCount} unchanged
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {skippedRows.map((r, i) => (
+                        <div key={'s' + i} className="card" style={{ padding: 10, fontSize: 12.5, opacity: .75 }}>
+                          <strong>{r.label}</strong> — {r.reason}
+                          <span style={{ float: 'right', fontWeight: 700, color: 'var(--gray)' }}>Skipped</span>
+                        </div>
+                      ))}
+                      {rejectedRows.map((r, i) => (
+                        <div key={'r' + i} className="card" style={{ padding: 10, fontSize: 12.5, opacity: .75 }}>
+                          <strong>{r.label}</strong> — {r.reason}
+                          <span style={{ float: 'right', fontWeight: 700, color: '#dc2626' }}>Rejected</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             </>
           )}
         </div>
 
-        {preview && preview.studentRows.length > 0 && (
+        {preview && (preview.insertCount + preview.updateCount) > 0 && (
+          <div style={{ borderTop: '1px solid var(--border)', flexShrink: 0, background: 'var(--card2)' }}>
+            {confirming && (
+              <div style={{ padding: '12px 16px 0' }}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.6, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.35)', borderRadius: 8, padding: '10px 12px' }}>
+                  ⚠️ This will save <strong>{preview.insertCount} new</strong> attendance record{preview.insertCount === 1 ? '' : 's'}
+                  {preview.updateCount > 0 && (
+                    <> and <strong>overwrite {preview.updateCount} existing</strong> record{preview.updateCount === 1 ? '' : 's'}</>
+                  )}. This can't be undone. Continue?
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, padding: 16 }}>
+              {!confirming ? (
+                <>
+                  <button className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+                  <button className="btn btn-primary" style={{ flex: 1.4 }} onClick={() => setConfirming(true)}>
+                    Review Import ({preview.insertCount + preview.updateCount})
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setConfirming(false)} disabled={submitting}>Back</button>
+                  <button className="btn btn-primary" style={{ flex: 1.4 }} onClick={submit} disabled={submitting}>
+                    {submitting ? 'Importing…' : `Confirm & Import ${preview.insertCount + preview.updateCount}`}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        {preview && (preview.insertCount + preview.updateCount) === 0 && (
           <div style={{ display: 'flex', gap: 10, padding: 16, borderTop: '1px solid var(--border)', flexShrink: 0, background: 'var(--card2)' }}>
-            <button className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" style={{ flex: 1.4 }} onClick={submit} disabled={submitting}>
-              {submitting ? 'Importing…' : `Import ${preview.markCount} Marks`}
-            </button>
+            <button className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>Close</button>
           </div>
         )}
       </div>
