@@ -160,7 +160,7 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
 
   return (
     <PanelWindow onClose={onClose}>
-      <div className="modal" style={{ width: '100%', maxWidth: 420, maxHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div className="modal" style={{ width: '100%', maxWidth: 420, height: '100%', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-title">
           <span>🌴 Leave Requests</span>
           <button className="modal-close" onClick={onClose}>×</button>

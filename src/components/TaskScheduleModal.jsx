@@ -204,7 +204,7 @@ export default function TaskScheduleModal({ academyId, userId, sports, batches, 
         style={{
           width: '100%',
           maxWidth: 520,
-          maxHeight: '100%',
+          height: '100%',
           display: 'flex',
           flexDirection: 'column',
           padding: 0,

@@ -22,7 +22,7 @@ export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdi
 
   return (
     <PanelWindow onClose={onClose}>
-      <div className="modal" style={{ width: '100%', maxWidth: 480, maxHeight: '100%', overflowY: 'auto' }}>
+      <div className="modal" style={{ width: '100%', maxWidth: 480, height: '100%', overflowY: 'auto' }}>
         <div className="modal-title">
           <span>📋 Task Detail</span>
           <button className="modal-close" onClick={onClose}>×</button>
