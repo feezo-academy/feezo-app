@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase } from '../lib/supabaseClient';
@@ -28,7 +27,8 @@ export default function PerformancePage() {
   const [selectedSports, setSelectedSports] = useState(new Set());
   const [selectedBatches, setSelectedBatches] = useState(new Set());
   const [sortDir, setSortDir] = useState('desc'); // 'desc' = high to low
-  const [openFilter, setOpenFilter] = useState(null); // 'sport' | 'batch' | null
+  const [filtersOpen, setFiltersOpen] = useState(false); // collapse bar
+  const [popup, setPopup] = useState(null); // 'sport' | 'batch' | 'sort' | null
 
   const [showProgramManager, setShowProgramManager] = useState(false);
   const [awardFor, setAwardFor] = useState(null); // row currently awarding points for
@@ -68,11 +68,13 @@ export default function PerformancePage() {
   const courseWeight = 100 - attendanceWeight;
 
   const saveWeight = async (val) => {
-    setSettings(s => ({ ...s, attendance_weight: val }));
+    const clamped = Math.max(0, Math.min(100, val));
+    setSettings(s => ({ ...s, attendance_weight: clamped }));
     const { error } = await supabase.from('performance_settings')
-      .upsert({ academy_id: academyId, attendance_weight: val, updated_by_id: user?.id, updated_at: new Date().toISOString() }, { onConflict: 'academy_id' });
+      .upsert({ academy_id: academyId, attendance_weight: clamped, updated_by_id: user?.id, updated_at: new Date().toISOString() }, { onConflict: 'academy_id' });
     if (error) alert('Failed to save split: ' + error.message);
   };
+  const saveCourseWeight = (val) => saveWeight(100 - Math.max(0, Math.min(100, val)));
 
   // attendance % per student+sport
   const attendancePct = useMemo(() => {
@@ -168,21 +170,11 @@ export default function PerformancePage() {
 
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Link to="/profile" style={{ fontSize: 12, color: 'var(--accent2)' }}>← Back to Profile</Link>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div className="section-title" style={{ marginBottom: 0 }}>🏆 Performance Leaderboard</div>
         {isAdmin && (
           <button className="btn btn-primary btn-sm" onClick={() => setShowProgramManager(true)}>+ Add Program</button>
         )}
-      </div>
-
-      <div className="section-title" style={{ marginBottom: 4 }}>🏆 Performance Leaderboard</div>
-      <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 10 }}>Attendance × {attendanceWeight}% + Course × {courseWeight}%</div>
-
-      {/* date range for attendance calculation */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
-        <input type="date" className="form-input" style={{ flex: 1, fontSize: 11, padding: '7px 6px' }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-        <span style={{ fontSize: 11, color: 'var(--gray)' }}>–</span>
-        <input type="date" className="form-input" style={{ flex: 1, fontSize: 11, padding: '7px 6px' }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
       </div>
 
       {/* search with clear button */}
@@ -202,54 +194,98 @@ export default function PerformancePage() {
         )}
       </div>
 
-      {/* filters + sort — single row */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10, overflowX: 'auto', position: 'relative' }}>
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <button className="btn btn-outline btn-sm" onClick={() => setOpenFilter(openFilter === 'sport' ? null : 'sport')}>
-            🏅 Sport {selectedSports.size < visibleSports.length ? `(${selectedSports.size})` : ''}
-          </button>
-          {openFilter === 'sport' && (
-            <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 20, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: 8, minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,.3)' }}>
-              {visibleSports.map(s => (
-                <label key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 2px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={selectedSports.has(s.name)} onChange={() => toggleSport(s.name)} />
-                  {s.name}
-                </label>
-              ))}
+      {/* collapse bar */}
+      <button
+        onClick={() => setFiltersOpen(o => !o)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 12, fontWeight: 700, color: 'var(--offwhite)', marginBottom: filtersOpen ? 8 : 12, cursor: 'pointer' }}
+      >
+        <span>Filters &amp; Sort</span>
+        <span style={{ color: 'var(--gray)' }}>{filtersOpen ? '▲' : '▼'}</span>
+      </button>
+
+      {filtersOpen && (
+        <div style={{ background: 'var(--card2)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+          {/* date range for attendance calculation */}
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', marginBottom: 5 }}>DATE RANGE</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center' }}>
+            <input type="date" className="form-input" style={{ flex: 1, fontSize: 11, padding: '7px 6px' }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <span style={{ fontSize: 11, color: 'var(--gray)' }}>–</span>
+            <input type="date" className="form-input" style={{ flex: 1, fontSize: 11, padding: '7px 6px' }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+
+          {/* sport / batch / sort — single row, open popup on click */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: isAdmin ? 12 : 0 }}>
+            <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => setPopup('sport')}>
+              Sport {selectedSports.size < visibleSports.length ? `(${selectedSports.size})` : ''}
+            </button>
+            <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => setPopup('batch')}>
+              Batch {selectedBatches.size < visibleBatches.length ? `(${selectedBatches.size})` : ''}
+            </button>
+            <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => setPopup('sort')}>
+              Sort
+            </button>
+          </div>
+
+          {/* admin: attendance/course split as numbers */}
+          {isAdmin && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', marginBottom: 5 }}>SCORE SPLIT (%)</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 3 }}>Attendance</div>
+                  <input type="number" min={0} max={100} className="form-input" style={{ width: '100%', fontSize: 12, padding: '7px 8px' }}
+                    value={attendanceWeight} onChange={e => saveWeight(Number(e.target.value))} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 3 }}>Course</div>
+                  <input type="number" min={0} max={100} className="form-input" style={{ width: '100%', fontSize: 12, padding: '7px 8px' }}
+                    value={courseWeight} onChange={e => saveCourseWeight(Number(e.target.value))} />
+                </div>
+              </div>
             </div>
           )}
         </div>
+      )}
 
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <button className="btn btn-outline btn-sm" onClick={() => setOpenFilter(openFilter === 'batch' ? null : 'batch')}>
-            🧩 Batch {selectedBatches.size < visibleBatches.length ? `(${selectedBatches.size})` : ''}
-          </button>
-          {openFilter === 'batch' && (
-            <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 20, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: 8, minWidth: 180, maxHeight: 220, overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,.3)' }}>
-              {visibleBatches.map(b => (
-                <label key={b.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 2px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={selectedBatches.has(b.name)} onChange={() => toggleBatch(b.name)} />
-                  {b.sport} · {b.batchLabel}
-                </label>
-              ))}
+      {/* popups */}
+      {popup && (
+        <div
+          onClick={() => setPopup(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 800 }}>
+                {popup === 'sport' ? 'Select Sport' : popup === 'batch' ? 'Select Batch' : 'Sort By'}
+              </div>
+              <button onClick={() => setPopup(null)} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
             </div>
-          )}
-        </div>
 
-        <button className="btn btn-outline btn-sm" style={{ flexShrink: 0 }} onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}>
-          {sortDir === 'desc' ? '↓ High-Low' : '↑ Low-High'}
-        </button>
-      </div>
+            {popup === 'sport' && visibleSports.map(s => (
+              <label key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedSports.has(s.name)} onChange={() => toggleSport(s.name)} />
+                {s.name}
+              </label>
+            ))}
 
-      {/* admin: attendance/course split control */}
-      {isAdmin && (
-        <div style={{ background: 'var(--card2)', borderRadius: 10, padding: 10, marginBottom: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', marginBottom: 6 }}>SCORE SPLIT — Attendance {attendanceWeight}% / Course {courseWeight}%</div>
-          <input
-            type="range" min={0} max={100} value={attendanceWeight}
-            onChange={e => saveWeight(Number(e.target.value))}
-            style={{ width: '100%' }}
-          />
+            {popup === 'batch' && visibleBatches.map(b => (
+              <label key={b.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedBatches.has(b.name)} onChange={() => toggleBatch(b.name)} />
+                {b.sport} · {b.batchLabel}
+              </label>
+            ))}
+
+            {popup === 'sort' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {[{ v: 'desc', l: 'High to Low' }, { v: 'asc', l: 'Low to High' }].map(o => (
+                  <label key={o.v} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+                    <input type="radio" name="sortdir" checked={sortDir === o.v} onChange={() => setSortDir(o.v)} />
+                    {o.l}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
