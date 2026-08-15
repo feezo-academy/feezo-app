@@ -55,21 +55,31 @@ function achievementSummary(list) {
   }).join('; ');
 }
 
+// Multiple sport/batch enrollments are joined into one cell as "Sport (Batch), ..."
+// rather than dropped to just the primary one.
+function enrollmentSummary(student) {
+  const list = student.enrollments;
+  if (list && list.length > 0) return list.map(en => `${en.sport} (${en.batchLabel})`).join(', ');
+  return student.sport ? `${student.sport} (${student.batchLabel || ''})` : '';
+}
+
 export function exportStudentsPdf(students, canViewContact = true, achievementsByStudent = {}) {
   const doc = new jsPDF({ orientation: 'landscape' });
   doc.text('Student List', 14, 14);
-  const head = ['Roll No', 'Name', 'Sport', 'Batch', 'DOB', 'Age', 'Gender', 'Parent/Guardian'];
+  const head = ['Roll No', 'Name', 'Sport (Batch)', 'DOB', 'Age', 'Gender', 'Height', 'Weight', 'BMI', 'Parent/Guardian'];
   if (canViewContact) head.push('Contact 1', 'Contact 2');
   head.push('School', 'Joined', 'Status', 'Achievements');
   autoTable(doc, {
     startY: 20,
     styles: { fontSize: 8 },
-    columnStyles: { [head.length - 1]: { cellWidth: 60 } },
+    columnStyles: { [head.length - 1]: { cellWidth: 50 } },
     head: [head],
     body: students.map(s => {
       const row = [
-        s.roll_no || '', s.name || '', s.sport || '', s.batchLabel || '',
-        s.dob || '', s.dob ? '' : (s.age || ''), s.gender || '', s.parent || '',
+        s.roll_no || '', s.name || '', enrollmentSummary(s),
+        s.dob || '', s.dob ? '' : (s.age || ''), s.gender || '',
+        s.height ? `${s.height} cm` : '', s.weight ? `${s.weight} kg` : '', calcBMI(s.height, s.weight),
+        s.parent || '',
       ];
       if (canViewContact) row.push(s.contact || '', s.contact2 || '');
       row.push(s.address || '', s.join_date || '', s.banned ? 'Dropout' : 'Active');
@@ -83,8 +93,10 @@ export function exportStudentsPdf(students, canViewContact = true, achievementsB
 export function exportStudentsXlsx(students, canViewContact = true, achievementsByStudent = {}) {
   const ws = XLSX.utils.json_to_sheet(students.map(s => {
     const row = {
-      RollNo: s.roll_no || '', Name: s.name || '', Sport: s.sport || '', Batch: s.batchLabel || '',
-      DOB: s.dob || '', Age: s.dob ? '' : (s.age || ''), Gender: s.gender || '', Parent: s.parent || '',
+      RollNo: s.roll_no || '', Name: s.name || '', SportBatch: enrollmentSummary(s),
+      DOB: s.dob || '', Age: s.dob ? '' : (s.age || ''), Gender: s.gender || '',
+      Height_cm: s.height || '', Weight_kg: s.weight || '', BMI: calcBMI(s.height, s.weight),
+      Parent: s.parent || '',
     };
     if (canViewContact) { row.Contact = s.contact || ''; row.Contact2 = s.contact2 || ''; }
     row.School = s.address || '';
@@ -96,7 +108,8 @@ export function exportStudentsXlsx(students, canViewContact = true, achievements
     return row;
   }));
   ws['!cols'] = [
-    { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 6 }, { wch: 9 }, { wch: 18 },
+    { wch: 10 }, { wch: 20 }, { wch: 24 }, { wch: 12 }, { wch: 6 }, { wch: 9 },
+    { wch: 9 }, { wch: 9 }, { wch: 7 }, { wch: 18 },
     ...(canViewContact ? [{ wch: 13 }, { wch: 13 }] : []),
     { wch: 20 }, { wch: 12 }, { wch: 9 }, { wch: 10 }, { wch: 50 },
   ];
