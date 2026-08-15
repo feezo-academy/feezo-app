@@ -295,14 +295,20 @@ export default function HomeTab() {
 
   const pending = pendingFeeRows.length;
 
-  const feeStudentList = (feeRows) => {    const seen = new Map();
+  const feeStudentList = (feeRows) => {
+    const seen = new Map();
     feeRows.forEach(f => {
       const s = studentsById[f.student_id];
       if (!s) return;
       const st = feeStatus(f);
       const extraLabel = st === 'partial' ? `₹${f.amount}/₹${f.amount_due} (partial)` : `₹${f.amount}${f.month ? ' · ' + f.month : ''}`;
       const seenKey = `${s.id}|${f.sport}|${f.batch_label}|${f.month}`;
-      if (!seen.has(seenKey)) seen.set(seenKey, { ...s, id: seenKey, extra: extraLabel });
+      if (!seen.has(seenKey)) {
+        // Override sport/batchLabel with THIS entry's own values — s.sport/
+        // s.batchLabel are just the student's primary enrollment and would
+        // show the wrong sport for a student who paid across two sports.
+        seen.set(seenKey, { ...s, id: seenKey, sport: f.sport, batchLabel: f.batch_label, extra: extraLabel });
+      }
     });
     return Array.from(seen.values());
   };
