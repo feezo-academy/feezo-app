@@ -42,6 +42,9 @@ function buildMsg(tpl, ctx) {
 // history isn't reinterpreted.
 function feeStatus(fee) {
   if (!fee) return 'unpaid';
+  // A scholarship row is always treated as fully settled — the student
+  // owes nothing, regardless of what amount_due/amount happen to hold.
+  if (fee.is_scholarship) return 'paid';
   const due = parseInt(fee.amount_due, 10);
   const paid = parseInt(fee.amount, 10) || 0;
   if (!due || isNaN(due)) return (fee.status === 'paid' && paid > 0) ? 'paid' : 'unpaid';
@@ -51,6 +54,28 @@ function feeStatus(fee) {
 }
 const isPaidEntry = (fee) => feeStatus(fee) === 'paid';
 const isPartialEntry = (fee) => feeStatus(fee) === 'partial';
+
+// Whether a fee row matches the currently selected status filter.
+// 'outstanding' is a convenience bucket covering both unpaid and partially
+// paid rows — it's the default view so staff land on students who still
+// owe money instead of a full/all list.
+function matchesStatusFilter(status, statusFilter) {
+  if (statusFilter === 'all') return true;
+  if (statusFilter === 'outstanding') return status === 'unpaid' || status === 'partial';
+  return status === statusFilter;
+}
+
+// Auto-generated, human-traceable transaction ID: TXN-<first 3 chars of the
+// academy id>-<student roll number>-<zero-padded sequence>. The sequence is
+// the student's running payment count across ALL their fee entries (every
+// sport/batch/month), so it climbs 001, 002, 003... across their whole
+// history rather than resetting per fee row.
+function genTxnId(academyId, rollNo, seq) {
+  const academyPart = (academyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase() || 'ACD';
+  const rollPart = (rollNo || 'NA').toString().toUpperCase();
+  const seqPart = String(seq).padStart(3, '0');
+  return `TXN-${academyPart}-${rollPart}-${seqPart}`;
+}
 
 // A student owes fees for a given *enrollment* (sport + batch) for a given
 // month only if they were enrolled on/before that month AND they have at
@@ -88,7 +113,7 @@ function canEditFee(fee, isAdmin) {
 // installments bring it to the full amount — staff can only ADD a new
 // installment (auto-totalled), never edit or overwrite what's already
 // been collected. Once fully paid it locks; only admin can reset it.
-function FeeEntryModal({ student, monthKey, monthLabel, sport, batchLabel, fee, onClose, onSaved }) {
+function FeeEntryModal({ student, monthKey, monthLabel, sport, batchLabel, fee, nextTxnSeq, onClose, onSaved }) {
   const { academyId, appUser, user, isAdmin } = useAuth();
   const status = feeStatus(fee);
   const due = fee?.amount_due ? parseInt(fee.amount_due, 10) : null;
@@ -99,30 +124,74 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, batchLabel, fee, 
   const isFirstEntry = status === 'unpaid' && !due;
   const locked = status === 'paid' && !isAdmin;
 
+  // Auto-generated transaction ID for whatever payment is about to be
+  // recorded in this modal session. Computed once up front from the
+  // student's running payment count so it's stable while the form is open.
+  const txnId = genTxnId(academyId, student.roll_no, nextTxnSeq);
+
   const [totalDue, setTotalDue] = useState(due ?? '');
+  // 'full' | 'partial' | 'scholarship' — only meaningful once a total due
+  // amount is known. Full Payment auto-fills the amount field with whatever's
+  // left; Partial Payment leaves it to manual entry; Scholarship waives the
+  // fee entirely — no amount, method, or transaction ID is collected.
+  const [payType, setPayType] = useState('full');
   const [payNow, setPayNow] = useState('');
   const [method, setMethod] = useState(fee?.method || 'cash');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
 
+  // Keep the amount field in sync with the Full/Partial toggle once we know
+  // what's owed (i.e. after Total Due has been entered on a first entry, or
+  // always for a follow-up installment where `remaining` is already known).
+  useEffect(() => {
+    const knownDue = isFirstEntry ? parseInt(totalDue, 10) : remaining;
+    if (payType === 'full' && knownDue > 0) {
+      setPayNow(String(knownDue));
+    } else if (payType === 'partial' && payNow === String(knownDue)) {
+      setPayNow('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payType, totalDue]);
+
   const save = async () => {
     setError('');
     const nowAmt = parseInt(payNow, 10) || 0;
     let payload;
 
-    if (isFirstEntry) {
+    if (payType === 'scholarship') {
+      // Scholarship waives the fee entirely — the student owes nothing.
+      // No transaction ID or payment method is recorded since no money
+      // actually changes hands; a zero-amount entry is logged purely for
+      // an audit trail of who granted it and when.
+      const dueAmt = isFirstEntry ? (parseInt(totalDue, 10) || 0) : parseInt(fee.amount_due, 10);
+      const newPayments = [...payments, {
+        amount: 0, method: 'scholarship', transaction_id: null,
+        by: appUser?.name || user?.email || '', at: new Date().toISOString(),
+        note: 'Fee waived — scholarship',
+      }];
+      payload = {
+        academy_id: academyId, student_id: student.id, sport, batch_label: batchLabel, month: monthKey,
+        status: 'paid', amount_due: dueAmt, amount: dueAmt, method: 'scholarship',
+        is_scholarship: true,
+        paid_date: toIso(new Date()),
+        collected_by: appUser?.name || user?.email || '',
+        payments: newPayments, msg_sent: fee?.msg_sent || [],
+      };
+    } else if (isFirstEntry) {
       const dueAmt = parseInt(totalDue, 10);
       if (!dueAmt || dueAmt < 1) { setError('Enter the total amount due'); return; }
       if (nowAmt < 0) { setError('Invalid amount'); return; }
+      if (nowAmt > dueAmt) { setError(`Amount paid (₹${nowAmt}) can't be greater than the amount due (₹${dueAmt})`); return; }
       const newPayments = nowAmt > 0
-        ? [...payments, { amount: nowAmt, method, by: appUser?.name || user?.email || '', at: new Date().toISOString() }]
+        ? [...payments, { amount: nowAmt, method, transaction_id: txnId, by: appUser?.name || user?.email || '', at: new Date().toISOString() }]
         : payments;
       const newStatus = nowAmt >= dueAmt ? 'paid' : (nowAmt > 0 ? 'partial' : 'unpaid');
       payload = {
         academy_id: academyId, student_id: student.id, sport, batch_label: batchLabel, month: monthKey,
         status: newStatus, amount_due: dueAmt, amount: nowAmt,
         method: nowAmt > 0 ? method : null,
+        is_scholarship: false,
         paid_date: newStatus === 'paid' ? toIso(new Date()) : null,
         collected_by: appUser?.name || user?.email || '',
         payments: newPayments, msg_sent: fee?.msg_sent || [],
@@ -130,12 +199,14 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, batchLabel, fee, 
     } else {
       if (!nowAmt || nowAmt < 1) { setError('Enter the amount being paid now'); return; }
       const dueAmt = parseInt(fee.amount_due, 10);
+      if (nowAmt > remaining) { setError(`Amount paid (₹${nowAmt}) can't be greater than the remaining balance (₹${remaining})`); return; }
       const newPaid = paidSoFar + nowAmt;
-      const newPayments = [...payments, { amount: nowAmt, method, by: appUser?.name || user?.email || '', at: new Date().toISOString() }];
+      const newPayments = [...payments, { amount: nowAmt, method, transaction_id: txnId, by: appUser?.name || user?.email || '', at: new Date().toISOString() }];
       const newStatus = newPaid >= dueAmt ? 'paid' : 'partial';
       payload = {
         academy_id: academyId, student_id: student.id, sport, batch_label: batchLabel, month: monthKey,
         status: newStatus, amount_due: dueAmt, amount: newPaid, method,
+        is_scholarship: false,
         paid_date: newStatus === 'paid' ? toIso(new Date()) : (fee.paid_date || null),
         collected_by: appUser?.name || user?.email || '',
         payments: newPayments, msg_sent: fee.msg_sent || [],
@@ -171,6 +242,7 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, batchLabel, fee, 
       const payload = {
         academy_id: academyId, student_id: student.id, sport, batch_label: batchLabel, month: monthKey,
         status: 'unpaid', amount_due: fee?.amount_due || null, amount: null, method: null,
+        is_scholarship: false,
         paid_date: null, collected_by: appUser?.name || user?.email || '',
         payments: [], msg_sent: fee?.msg_sent || [],
       };
@@ -221,6 +293,7 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, batchLabel, fee, 
               <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.1)', color: 'var(--gray)' }}>
                 Last payment: ₹{lastPayment.amount} · {lastPayment.method} · {lastPayment.by}
                 {lastPayment.at && <> · {new Date(lastPayment.at).toLocaleDateString()}</>}
+                {lastPayment.transaction_id && <div style={{ marginTop: 2 }}>{lastPayment.transaction_id}</div>}
               </div>
             )}
           </div>
@@ -240,22 +313,66 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, batchLabel, fee, 
             )}
 
             <div className="form-group">
-              <label className="form-label">
-                {isFirstEntry ? 'Amount Paying Now ₹ (leave blank if none yet)' : `Amount Paying Now ₹ (remaining ₹${remaining})`}
-              </label>
-              <input type="number" min={isFirstEntry ? '0' : '1'} className="form-input" value={payNow} onChange={e => setPayNow(e.target.value)} placeholder="Enter amount" />
-            </div>
-
-            {(isFirstEntry ? parseInt(payNow, 10) > 0 : true) && (
-              <div className="form-group">
-                <label className="form-label">Payment Method</label>
-                <select className="form-select" value={method} onChange={e => setMethod(e.target.value)}>
-                  <option value="cash">Cash</option>
-                  <option value="upi">UPI</option>
-                  <option value="card">Card</option>
-                  <option value="bank">Bank Transfer</option>
-                </select>
+                <label className="form-label">Payment Type</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 700, background: payType === 'full' ? 'var(--accent2)' : 'var(--card2)', color: payType === 'full' ? '#fff' : 'var(--gray)' }}
+                    onClick={() => setPayType('full')}
+                  >💯 Full</button>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 700, background: payType === 'partial' ? 'var(--accent2)' : 'var(--card2)', color: payType === 'partial' ? '#fff' : 'var(--gray)' }}
+                    onClick={() => setPayType('partial')}
+                  >➗ Partial</button>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 700, background: payType === 'scholarship' ? 'var(--gold, #e0a020)' : 'var(--card2)', color: payType === 'scholarship' ? '#fff' : 'var(--gray)' }}
+                    onClick={() => setPayType('scholarship')}
+                  >🎓 Scholarship</button>
+                </div>
               </div>
+
+            {payType === 'scholarship' ? (
+              <div style={{ background: 'rgba(230,160,20,0.12)', border: '1px solid rgba(230,160,20,0.4)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12, color: 'var(--gold, #e0a020)' }}>
+                🎓 This student is on scholarship — no payment is required. This fee will be marked fully settled with ₹0 collected.
+              </div>
+            ) : (
+              <>
+                <div className="form-group">
+                  <label className="form-label">
+                    {isFirstEntry ? 'Amount Paying Now ₹ (leave blank if none yet)' : `Amount Paying Now ₹ (remaining ₹${remaining})`}
+                  </label>
+                  <input
+                    type="number" min={isFirstEntry ? '0' : '1'} className="form-input" value={payNow}
+                    onChange={e => { setPayNow(e.target.value); setPayType('partial'); }}
+                    placeholder="Enter amount"
+                    readOnly={payType === 'full'}
+                  />
+                </div>
+
+                {(isFirstEntry ? parseInt(payNow, 10) > 0 : true) && (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label">Payment Method</label>
+                      <select className="form-select" value={method} onChange={e => setMethod(e.target.value)}>
+                        <option value="cash">Cash</option>
+                        <option value="upi">UPI</option>
+                        <option value="card">Card</option>
+                        <option value="bank">Bank Transfer</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Transaction ID (auto-generated)</label>
+                      <input type="text" className="form-input" value={txnId} readOnly style={{ opacity: 0.75 }} />
+                    </div>
+                  </>
+                )}
+              </>
             )}
           </>
         )}
@@ -302,7 +419,7 @@ export default function FeesTab() {
   const [year, setYear] = useState(today.getFullYear());
   const [sportFilter, setSportFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('unpaid'); // 'all' | 'paid' | 'unpaid'
+  const [statusFilter, setStatusFilter] = useState('outstanding'); // 'all' | 'outstanding' | 'paid' | 'partial' | 'unpaid'
   const [search, setSearch] = useState('');
   const [includeNoAttendance, setIncludeNoAttendance] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -353,6 +470,19 @@ export default function FeesTab() {
   const feeMap = useMemo(() => {
     const m = {};
     fees.forEach(f => { m[`${f.student_id}|${norm(f.sport)}|${norm(f.batch_label)}|${f.month}`] = f; });
+    return m;
+  }, [fees]);
+
+  // Running count of payments already recorded per student, across every
+  // one of their fee rows (any sport/batch/month). Used to seed the next
+  // transaction ID sequence number (e.g. their 4th-ever payment gets ...-004).
+  const studentTxnCounts = useMemo(() => {
+    const m = {};
+    fees.forEach(f => {
+      const n = (f.payments || []).length;
+      if (!n) return;
+      m[f.student_id] = (m[f.student_id] || 0) + n;
+    });
     return m;
   }, [fees]);
 
@@ -431,7 +561,10 @@ export default function FeesTab() {
   const unpaidRows = useMemo(() => allRows.filter(r => r.status === 'unpaid'), [allRows]);
   const totalNoAttendance = useMemo(() => periods.reduce((s, p) => s + p.noAttendance.length, 0), [periods]);
 
+  const outstandingRows = useMemo(() => allRows.filter(r => r.status === 'unpaid' || r.status === 'partial'), [allRows]);
+
   const activeRows = statusFilter === 'all' ? allRows
+    : statusFilter === 'outstanding' ? outstandingRows
     : statusFilter === 'paid' ? paidRows
     : statusFilter === 'partial' ? partialRows
     : unpaidRows;
@@ -472,6 +605,7 @@ export default function FeesTab() {
       amount_due: existing?.amount_due ?? null,
       amount: existing?.amount ?? null,
       method: existing?.method ?? null,
+      is_scholarship: existing?.is_scholarship ?? false,
       paid_date: existing?.paid_date ?? null,
       collected_by: existing?.collected_by ?? null,
       payments: existing?.payments || [],
@@ -505,7 +639,7 @@ export default function FeesTab() {
     Month: monthLabelFor(r.monthKey),
     'Amount Due': r.fee?.amount_due || 0,
     'Amount Paid': r.fee?.amount || 0,
-    Status: r.status === 'paid' ? 'Paid' : r.status === 'partial' ? 'Partially Paid' : 'Unpaid',
+    Status: r.fee?.is_scholarship ? 'Scholarship' : r.status === 'paid' ? 'Paid' : r.status === 'partial' ? 'Partially Paid' : 'Unpaid',
   }));
 
   return (
@@ -590,6 +724,7 @@ export default function FeesTab() {
       {/* Paid / Unpaid dropdown */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
         <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+          <option value="outstanding">Unpaid + Partial ({outstandingRows.length})</option>
           <option value="all">All Status</option>
           <option value="paid">Paid ({paidRows.length})</option>
           <option value="partial">Partially Paid ({partialRows.length})</option>
@@ -609,13 +744,17 @@ export default function FeesTab() {
 
         {!loading && activeRows.length === 0 && (
           <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--gray)' }}>
-            {statusFilter === 'paid' ? 'No paid students yet.' : statusFilter === 'partial' ? 'No partially paid students.' : statusFilter === 'unpaid' ? 'No unpaid students 🎉' : 'No students to show.'}
+            {statusFilter === 'paid' ? 'No paid students yet.'
+              : statusFilter === 'partial' ? 'No partially paid students.'
+              : statusFilter === 'unpaid' ? 'No unpaid students 🎉'
+              : statusFilter === 'outstanding' ? 'No unpaid or partially paid students 🎉'
+              : 'No students to show.'}
           </div>
         )}
 
         {!loading && viewMode === 'year' ? (
           periods.map(p => {
-            const pRows = p.rows.filter(r => statusFilter === 'all' || r.paid === (statusFilter === 'paid'));
+            const pRows = p.rows.filter(r => matchesStatusFilter(r.status, statusFilter));
             if (pRows.length === 0) return null;
             return (
               <div key={p.monthKey}>
@@ -653,6 +792,7 @@ export default function FeesTab() {
           sport={entryModal.sport}
           batchLabel={entryModal.batchLabel}
           fee={entryModal.fee}
+          nextTxnSeq={(studentTxnCounts[entryModal.student.id] || 0) + 1}
           onClose={() => setEntryModal(null)}
           onSaved={(updated) => {
             const wasFullyPaid = feeStatus(entryModal.fee) === 'paid';
@@ -688,6 +828,7 @@ export default function FeesTab() {
 function FeeRow({ row, isAdmin, onReminder, onThankYou, onEdit }) {
   const { student, sport, batchLabel, fee, status, paid } = row;
   const editable = canEditFee(fee, isAdmin);
+  const scholarship = !!fee?.is_scholarship;
   // A fee row can exist purely because a reminder was logged against it (see
   // recordMsgSent) — that shouldn't flip the button to "Edit". Only treat it
   // as a real entry once someone has actually saved payment info.
@@ -696,8 +837,8 @@ function FeeRow({ row, isAdmin, onReminder, onThankYou, onEdit }) {
   const due = fee?.amount_due ? parseInt(fee.amount_due, 10) : null;
   const amountPaid = fee?.amount ? parseInt(fee.amount, 10) : 0;
   const remaining = due != null ? Math.max(due - amountPaid, 0) : null;
-  const btnLabel = paid && !editable ? '🔒 Paid' : (partial ? '➕ Add Payment' : (hasEntry ? '✏️ Edit' : '💳 Pay'));
-  const badgeLabel = paid ? 'paid' : partial ? 'partially paid' : 'unpaid';
+  const btnLabel = scholarship ? '🔒 Scholarship' : paid && !editable ? '🔒 Paid' : (partial ? '➕ Add Payment' : (hasEntry ? '✏️ Edit' : '💳 Pay'));
+  const badgeLabel = scholarship ? 'scholarship' : paid ? 'paid' : partial ? 'partially paid' : 'unpaid';
   const reminderCount = (fee?.msg_sent || []).filter(m => m.kind === 'reminder').length;
   const thankYouCount = (fee?.msg_sent || []).filter(m => m.kind === 'paid').length;
 
@@ -707,14 +848,15 @@ function FeeRow({ row, isAdmin, onReminder, onThankYou, onEdit }) {
         <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name}</div>
         <div style={{ fontSize: 10, color: 'var(--gray)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {sport}{batchLabel ? ` · ${batchLabel}` : ''}
-          {partial && due != null && <span style={{ color: 'var(--gold)' }}> · ₹{amountPaid}/₹{due} (₹{remaining} left)</span>}
-          {fee?.method && <span> · {fee.method}</span>}
+          {scholarship && <span style={{ color: 'var(--gold, #e0a020)' }}> · 🎓 fee waived</span>}
+          {!scholarship && partial && due != null && <span style={{ color: 'var(--gold)' }}> · ₹{amountPaid}/₹{due} (₹{remaining} left)</span>}
+          {!scholarship && fee?.method && <span> · {fee.method}</span>}
           {fee?.collected_by && <span style={{ color: 'var(--gold)' }}> · 👤 {fee.collected_by}</span>}
         </div>
       </div>
       <span
-        className={'badge ' + (paid ? 'badge-green' : partial ? 'badge-orange' : 'badge-red')}
-        style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, flexShrink: 0, whiteSpace: 'nowrap', ...(partial ? { background: 'rgba(230,160,20,0.18)', color: '#e0a020' } : {}) }}
+        className={'badge ' + (scholarship ? 'badge-gold' : paid ? 'badge-green' : partial ? 'badge-orange' : 'badge-red')}
+        style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, flexShrink: 0, whiteSpace: 'nowrap', ...(partial && !scholarship ? { background: 'rgba(230,160,20,0.18)', color: '#e0a020' } : {}), ...(scholarship ? { background: 'rgba(160,120,255,0.18)', color: '#a078ff' } : {}) }}
       >
         {badgeLabel}
       </span>
