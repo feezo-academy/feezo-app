@@ -88,3 +88,52 @@ export const expandDates = (from, to, days) => {
 
 export const SCHED_COLORS = { scheduled: '#3b82f6', pending: '#3b82f6', in_progress: '#f59e0b', done: '#22c55e', cancelled: '#ef4444' };
 export const SCHED_LABELS = { scheduled: '📅 Scheduled', pending: '📅 Scheduled', in_progress: '▶️ In Progress', done: '✅ Done', cancelled: '❌ Cancelled' };
+
+// ---- Missed-entry / urgency helpers ----
+// A task is "missed" once its check-in or check-out window has passed
+// without the corresponding action being taken, and no admin has
+// reviewed it yet. Reviewing (reviewed_at set) always clears it,
+// regardless of what the status field says.
+export const isTaskMissed = (t) => {
+  if (!t || t.reviewed_at) return false;
+  if (t.status === 'done' || t.status === 'cancelled') return false;
+  const now = new Date();
+  const today = todayIso();
+
+  const dueTimeToday = (timeStr) => {
+    if (!timeStr) return null;
+    const [h, m] = timeStr.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d;
+  };
+
+  if (t.status === 'scheduled' || t.status === 'pending') {
+    if (!t.in_time) return false;
+    if (t.date < today) return true;
+    if (t.date === today) { const due = dueTimeToday(t.in_time); return due ? now > due : false; }
+    return false;
+  }
+  if (t.status === 'in_progress') {
+    if (!t.out_time) return false;
+    if (t.date < today) return true;
+    if (t.date === today) { const due = dueTimeToday(t.out_time); return due ? now > due : false; }
+    return false;
+  }
+  return false;
+};
+
+// Card/badge urgency for a task: red = today or missed, orange = tomorrow,
+// purple = a missed reason was submitted and is awaiting admin review.
+// Returns null once the task is done/cancelled or has been reviewed —
+// that's how warnings "go off".
+export const urgencyFor = (t) => {
+  if (!t || t.status === 'done' || t.status === 'cancelled') return null;
+  if (t.missed_reason && !t.reviewed_at) return { label: '📩 Awaiting Review', color: '#a855f7' };
+  if (isTaskMissed(t)) return { label: '⚠️ Missed', color: '#ef4444' };
+  const today = todayIso();
+  const tomorrow = addDays(today, 1);
+  if (t.date === today) return { label: 'Today', color: '#ef4444' };
+  if (t.date === tomorrow) return { label: 'Tomorrow', color: '#f97316' };
+  return null;
+};
