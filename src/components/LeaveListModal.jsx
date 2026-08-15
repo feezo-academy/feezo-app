@@ -16,6 +16,7 @@ function dateColor(date) {
 
 export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staffList, onClose, onChanged }) {
   const [leaves, setLeaves] = useState([]);
+  const [adminIds, setAdminIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reassignFor, setReassignFor] = useState(null); // leave row currently choosing a reassignment target
   const [reassignTo, setReassignTo] = useState('');
@@ -25,8 +26,12 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
     setLoading(true);
     let q = supabase.from('leave_requests').select('*').eq('academy_id', academyId);
     if (!isAdmin) q = q.eq('staff_id', userId);
-    const { data } = await q;
-    setLeaves(data || []);
+    const [{ data: leaveData }, { data: userData }] = await Promise.all([
+      q,
+      supabase.from('app_users').select('id, role').eq('academy_id', academyId),
+    ]);
+    setLeaves(leaveData || []);
+    setAdminIds((userData || []).filter(u => (u.role || '').split(',').map(r => r.trim()).includes('admin')).map(u => u.id));
     setLoading(false);
   };
   useEffect(() => { load(); }, [academyId, isAdmin, userId]);
@@ -98,7 +103,10 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
     return (
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent2)', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 7 }}>{title} ({items.length})</div>
-        {items.map(l => (
+        {items.map(l => {
+          const requesterIsAdmin = adminIds.includes(l.staff_id);
+          const ownAdminRequest = requesterIsAdmin && l.staff_id === userId;
+          return (
           <div key={l.id} className="card" style={{ padding: 11, marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
               <div style={{ minWidth: 0 }}>
@@ -109,7 +117,13 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
               <span style={{ fontSize: 10, fontWeight: 800, color: STATUS_COLOR[l.status], background: 'var(--card2)', borderRadius: 5, padding: '3px 7px', flexShrink: 0, textTransform: 'uppercase' }}>{l.status}</span>
             </div>
 
-            {showActions && isAdmin && reassignFor?.id !== l.id && (
+            {showActions && isAdmin && ownAdminRequest && (
+              <div style={{ marginTop: 9, fontSize: 11, color: '#b45309', background: '#f59e0b18', border: '1px solid #f59e0b44', borderRadius: 8, padding: '7px 9px' }}>
+                ⚠️ This is your own leave request — another admin needs to review it.
+              </div>
+            )}
+
+            {showActions && isAdmin && !ownAdminRequest && reassignFor?.id !== l.id && (
               <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
                 <button className="btn" style={{ flex: 1, fontSize: 11, padding: 7, background: '#22c55e22', color: '#22c55e', border: '1px solid #22c55e44', fontWeight: 700 }}
                   disabled={busyId === l.id} onClick={() => handleApproveClick(l)}>✅ Approve</button>
@@ -135,7 +149,8 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
