@@ -19,7 +19,13 @@ const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
 // A student can now hold multiple enrollments (same or different sports) —
 // attendance is tracked per enrollment, not per student, so every state map
 // below is keyed by this composite key rather than bare student_id.
-const keyFor = (studentId, sport, batchLabel) => `${studentId}::${sport || ''}::${batchLabel || ''}`;
+// Trimmed + lowercased so a stray space or casing drift between what's
+// stored on an old attendance row and the student's *current* enrollment
+// text (e.g. a renamed batch) doesn't silently break the lookup — this was
+// causing month view (which matches per sport+batch) to show 0P/0A while
+// year view (which only matches by student_id) still showed real totals.
+const norm = (v) => (v || '').toString().trim().toLowerCase();
+const keyFor = (studentId, sport, batchLabel) => `${studentId}::${norm(sport)}::${norm(batchLabel)}`;
 
 function RollBadge({ rollNo }) {
   return (
