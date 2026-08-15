@@ -10,6 +10,7 @@ import {
 import TaskScheduleModal from '../components/TaskScheduleModal';
 import ViewTaskModal from '../components/ViewTaskModal';
 import ApplyLeaveModal from '../components/ApplyLeaveModal';
+import LeaveListModal from '../components/LeaveListModal';
 
 function TaskCard({ t, isAdmin, staffName, onView, onStart, onDone }) {
   const color = SCHED_COLORS[t.status] || SCHED_COLORS.scheduled;
@@ -75,6 +76,7 @@ export default function CalendarTab() {
   const [editTask, setEditTask] = useState(null);
   const [viewTask, setViewTask] = useState(null);
   const [showLeave, setShowLeave] = useState(false);
+  const [showLeaveList, setShowLeaveList] = useState(false);
 
   const load = async () => {
     if (!academyId) return;
@@ -161,16 +163,15 @@ export default function CalendarTab() {
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>📅 Calendar</div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {isAdmin && (
             <>
               <button className="btn btn-primary btn-sm" onClick={() => { setEditTask(null); setShowAssign(true); }}>+ Assign Task</button>
-              <Link to="/calendar/leave" className="btn btn-outline btn-sm">📊 Leave</Link>
+              <Link to="/calendar/leave" className="btn btn-outline btn-sm">📊 Leave Count</Link>
             </>
           )}
-          {!isAdmin && (
-            <button className="btn btn-outline btn-sm" onClick={() => setShowLeave(true)}>🏖️ Apply Leave</button>
-          )}
+          <button className="btn btn-outline btn-sm" onClick={() => setShowLeave(true)}>🏖️ Apply Leave</button>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowLeaveList(true)}>🌴 Leave</button>
         </div>
       </div>
 
@@ -306,7 +307,19 @@ export default function CalendarTab() {
           userName={appUser?.name || user?.email}
           myTasksByDate={myTasksByDate}
           onClose={() => setShowLeave(false)}
-          onSubmitted={() => setShowLeave(false)}
+          onSubmitted={() => { setShowLeave(false); }}
+        />
+      )}
+
+      {showLeaveList && (
+        <LeaveListModal
+          academyId={academyId}
+          isAdmin={isAdmin}
+          userId={user?.id}
+          tasks={tasks}
+          staffList={staffList}
+          onClose={() => setShowLeaveList(false)}
+          onChanged={load}
         />
       )}
     </div>
