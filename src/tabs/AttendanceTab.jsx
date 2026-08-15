@@ -16,6 +16,11 @@ const toIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, 
 const todayStr = () => toIso(new Date());
 const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
 
+// A student can now hold multiple enrollments (same or different sports) —
+// attendance is tracked per enrollment, not per student, so every state map
+// below is keyed by this composite key rather than bare student_id.
+const keyFor = (studentId, sport, batchLabel) => `${studentId}::${sport || ''}::${batchLabel || ''}`;
+
 function RollBadge({ rollNo }) {
   return (
     <div style={{
@@ -75,21 +80,32 @@ export default function AttendanceTab() {
   const shiftYear = (delta) => setYear(year + delta);
 
   const students = useMemo(() => {
-    let list = visibleStudents.filter(s => {
-      if (sportFilter && s.sport !== sportFilter) return false;
-      if (batchFilter && s.batch !== batchFilter) return false;
+    // Flatten each student's enrollments into one row per sport+batch — a
+    // student in two enrollments appears twice, each independently trackable.
+    const rows = [];
+    visibleStudents.forEach(s => {
+      const enrollments = (s.enrollments && s.enrollments.length > 0)
+        ? s.enrollments : [{ sport: s.sport, batchLabel: s.batchLabel }];
+      enrollments.forEach(en => {
+        if (!en.sport) return;
+        rows.push({ student: s, sport: en.sport, batchLabel: en.batchLabel, key: keyFor(s.id, en.sport, en.batchLabel) });
+      });
+    });
+    let list = rows.filter(r => {
+      if (sportFilter && r.sport !== sportFilter) return false;
+      if (batchFilter && r.batchLabel !== batchFilter) return false;
       if (search) {
         const q = search.toLowerCase();
-        if (!(s.name?.toLowerCase().includes(q) || s.roll_no?.toLowerCase?.().includes(q))) return false;
+        if (!(r.student.name?.toLowerCase().includes(q) || r.student.roll_no?.toLowerCase?.().includes(q))) return false;
       }
       return true;
     });
     list = [...list].sort((a, b) => {
       switch (sortBy) {
-        case 'roll_desc': return (b.roll_no || '').localeCompare(a.roll_no || '');
-        case 'name_az': return (a.name || '').localeCompare(b.name || '');
-        case 'name_za': return (b.name || '').localeCompare(a.name || '');
-        default: return (a.roll_no || '').localeCompare(b.roll_no || '');
+        case 'roll_desc': return (b.student.roll_no || '').localeCompare(a.student.roll_no || '');
+        case 'name_az': return (a.student.name || '').localeCompare(b.student.name || '');
+        case 'name_za': return (b.student.name || '').localeCompare(a.student.name || '');
+        default: return (a.student.roll_no || '').localeCompare(b.student.roll_no || '');
       }
     });
     return list;
@@ -98,11 +114,18 @@ export default function AttendanceTab() {
   // "Mark All" and the P/A summary counts intentionally ignore the search box —
   // they operate on the full sport+batch scoped roster, matching the HTML app.
   const bulkTargets = useMemo(() => {
-    return visibleStudents.filter(s => {
-      if (sportFilter && s.sport !== sportFilter) return false;
-      if (batchFilter && s.batch !== batchFilter) return false;
-      return true;
+    const rows = [];
+    visibleStudents.forEach(s => {
+      const enrollments = (s.enrollments && s.enrollments.length > 0)
+        ? s.enrollments : [{ sport: s.sport, batchLabel: s.batchLabel }];
+      enrollments.forEach(en => {
+        if (!en.sport) return;
+        if (sportFilter && en.sport !== sportFilter) return;
+        if (batchFilter && en.batchLabel !== batchFilter) return;
+        rows.push({ student: s, sport: en.sport, batchLabel: en.batchLabel, key: keyFor(s.id, en.sport, en.batchLabel) });
+      });
     });
+    return rows;
   }, [visibleStudents, sportFilter, batchFilter]);
 
   // Day-view-only re-sort (present/absent first) and status filter — applied on
@@ -111,16 +134,16 @@ export default function AttendanceTab() {
     if (viewMode !== 'day') return students;
     let list = students;
     if (sortBy === 'present_first' || sortBy === 'absent_first' || sortBy === 'unmarked_first') {
-      const rank = (s) => {
-        const v = records[s.id];
+      const rank = (r) => {
+        const v = records[r.key];
         if (sortBy === 'present_first') return v === 'P' ? 0 : v === 'A' ? 2 : 1;
         if (sortBy === 'absent_first') return v === 'A' ? 0 : v === 'P' ? 2 : 1;
         return v ? 1 : 0; // unmarked_first: unmarked → marked
       };
-      list = [...list].sort((a, b) => rank(a) - rank(b) || (a.roll_no || '').localeCompare(b.roll_no || ''));
+      list = [...list].sort((a, b) => rank(a) - rank(b) || (a.student.roll_no || '').localeCompare(b.student.roll_no || ''));
     }
     if (statusFilter !== 'all') {
-      list = list.filter(s => (statusFilter === 'present' ? records[s.id] === 'P' : records[s.id] === 'A'));
+      list = list.filter(r => (statusFilter === 'present' ? records[r.key] === 'P' : records[r.key] === 'A'));
     }
     return list;
   }, [viewMode, students, sortBy, statusFilter, records]);
@@ -128,11 +151,15 @@ export default function AttendanceTab() {
   const batchesForSport = visibleBatches.filter(b => !sportFilter || b.sport === sportFilter);
 
   // A day only counts as a "class day" if someone was actually marked. Shown as
-  // a 🏖️ holiday badge otherwise (mirrors the HTML app's isClassDay check).
+  // a 🏖️ holiday badge otherwise. Scoped by sportFilter only (not batch/search),
+  // matching the HTML app's isClassDay check.
+  const classDayRows = useMemo(() => {
+    return sportFilter ? bulkTargets.filter(r => r.sport === sportFilter) : bulkTargets;
+  }, [bulkTargets, sportFilter]);
   const classDay = useMemo(() => {
-    const ids = new Set((sportFilter ? visibleStudents.filter(s => s.sport === sportFilter) : visibleStudents).map(s => s.id));
-    return Object.keys(records).some(sid => ids.has(sid) && (records[sid] === 'P' || records[sid] === 'A'));
-  }, [records, visibleStudents, sportFilter]);
+    const keys = new Set(classDayRows.map(r => r.key));
+    return Object.keys(records).some(k => keys.has(k) && (records[k] === 'P' || records[k] === 'A'));
+  }, [records, classDayRows]);
 
   // Best-effort activity log, matching the columns admin/ActivityPage.jsx
   // actually reads (actor_name, then action || description). Written to both
@@ -163,7 +190,10 @@ export default function AttendanceTab() {
           .eq('academy_id', academyId).eq('date', date);
         const map = {};
         const late = {};
-        (data || []).forEach(r => { map[r.student_id] = r.status; late[r.student_id] = !!r.is_latecomer; });
+        (data || []).forEach(r => {
+          const k = keyFor(r.student_id, r.sport, r.batch);
+          map[k] = r.status; late[k] = !!r.is_latecomer;
+        });
         setRecords(map);
         setLateMap(late);
 
@@ -207,23 +237,33 @@ export default function AttendanceTab() {
       } else if (viewMode === 'month') {
         const from = toIso(new Date(year, month, 1));
         const to = toIso(new Date(year, month + 1, 0));
-        const { data } = await supabase.from('attendance').select('student_id,status')
+        let q = supabase.from('attendance').select('student_id,sport,batch,status')
           .eq('academy_id', academyId).gte('date', from).lte('date', to);
+        if (sportFilter) q = q.eq('sport', sportFilter);
+        if (sportFilter && batchFilter) q = q.eq('batch', batchFilter);
+        const { data } = await q;
         const agg = {};
         (data || []).forEach(r => {
-          if (!agg[r.student_id]) agg[r.student_id] = { present: 0, absent: 0 };
-          if (r.status === 'P') agg[r.student_id].present++;
-          else if (r.status === 'A') agg[r.student_id].absent++;
+          const k = keyFor(r.student_id, r.sport, r.batch);
+          if (!agg[k]) agg[k] = { present: 0, absent: 0 };
+          if (r.status === 'P') agg[k].present++;
+          else if (r.status === 'A') agg[k].absent++;
         });
         setPeriodRows(agg);
       } else {
         // Year view — monthly breakdown (class days + P/A totals), scoped to the
-        // currently filtered roster, matching the HTML app's year view.
+        // currently filtered roster, matching the HTML app's year view. When no
+        // sport/batch filter is set this totals across ALL of a student's
+        // enrollments (not split per-enrollment) — the year view only ever
+        // showed monthly totals, not a per-enrollment breakdown.
         const from = toIso(new Date(year, 0, 1));
         const to = toIso(new Date(year, 11, 31));
-        const { data } = await supabase.from('attendance').select('date,student_id,status')
+        let q = supabase.from('attendance').select('date,student_id,status')
           .eq('academy_id', academyId).gte('date', from).lte('date', to);
-        const idSet = new Set(students.map(s => s.id));
+        if (sportFilter) q = q.eq('sport', sportFilter);
+        if (sportFilter && batchFilter) q = q.eq('batch', batchFilter);
+        const { data } = await q;
+        const idSet = new Set(students.map(r => r.student.id));
         const byMonth = {};
         for (let i = 0; i < 12; i++) byMonth[i] = { days: new Set(), p: 0, a: 0 };
         (data || []).forEach(r => {
@@ -246,19 +286,20 @@ export default function AttendanceTab() {
   //  - Closed register: existing marks are locked, EXCEPT a latecomer Present
   //    mark can still be flipped to Absent. Unmarked students can still be
   //    marked — Absent normally, or Present as a flagged "latecomer".
-  const setStatus = (student, status) => {
+  const setStatus = (row, status) => {
     if (isFutureDate) { window.alert('Cannot mark attendance for future dates.'); return; }
-    const sp = student.sport;
+    const sp = row.sport;
     const done = !!dayStatusMap[sp];
-    const existing = records[student.id];
-    const isLate = !!lateMap[student.id];
+    const existing = records[row.key];
+    const isLate = !!lateMap[row.key];
+    const student = row.student;
 
     if (done) {
       if (existing === 'A') {
         if (status === 'A') return; // already absent, no-op
         const ok = window.confirm(`Register is closed. Change ${student.name} from Absent → latecomer Present?`);
         if (!ok) return;
-        applyStatus(student, 'P', true);
+        applyStatus(row, 'P', true);
         logAttendance(`${student.name} → latecomer Present from Absent (${sp}) on ${date}`);
         return;
       }
@@ -266,7 +307,7 @@ export default function AttendanceTab() {
       if (existing === 'P' && isLate && status === 'A') {
         const ok = window.confirm(`Change ${student.name} from Latecomer → Absent (${sp}) on ${date}?`);
         if (!ok) return;
-        applyStatus(student, 'A', false);
+        applyStatus(row, 'A', false);
         logAttendance(`${student.name} → Absent from latecomer (${sp}) on ${date}`);
         return;
       }
@@ -275,13 +316,13 @@ export default function AttendanceTab() {
       if (status === 'A') {
         const ok = window.confirm(`Mark ${student.name} as Absent (${sp}) on ${date}?`);
         if (!ok) return;
-        applyStatus(student, 'A', false);
+        applyStatus(row, 'A', false);
         logAttendance(`${student.name} → Absent (${sp}) on ${date} [register closed]`);
         return;
       }
       const ok = window.confirm(`Register is closed. Mark ${student.name} as a latecomer (Present)?`);
       if (!ok) return;
-      applyStatus(student, 'P', true);
+      applyStatus(row, 'P', true);
       logAttendance(`${student.name} → latecomer Present (${sp}) on ${date}`);
       return;
     }
@@ -293,42 +334,42 @@ export default function AttendanceTab() {
       const ok = window.confirm(`Change ${student.name}'s attendance from ${label(existing)} to ${label(status)}?`);
       if (!ok) return;
     }
-    applyStatus(student, status, false);
+    applyStatus(row, status, false);
     logAttendance(`${student.name} → ${status === 'P' ? 'Present' : 'Absent'} (${sp}) on ${date}`);
   };
 
-  const applyStatus = (student, status, isLate) => {
-    setRecords(p => ({ ...p, [student.id]: status }));
-    setLateMap(p => ({ ...p, [student.id]: !!isLate }));
-    persistStatus(student, status, isLate);
+  const applyStatus = (row, status, isLate) => {
+    setRecords(p => ({ ...p, [row.key]: status }));
+    setLateMap(p => ({ ...p, [row.key]: !!isLate }));
+    persistStatus(row, status, isLate);
   };
 
   // True once we learn (from a failed request) that `is_latecomer` doesn't
   // exist yet in Supabase — avoids retrying every single call for nothing.
   const missingLatecomerCol = useRef(false);
 
-  // Writes a single student's mark straight to Supabase so nothing depends on
-  // a separate "Save" step. Uses the `is_latecomer` boolean column on
+  // Writes a single enrollment's mark straight to Supabase so nothing depends
+  // on a separate "Save" step. Uses the `is_latecomer` boolean column on
   // `attendance` when available, and transparently falls back to writing
   // without it if that column hasn't been migrated in yet — so marking never
   // breaks, it just can't flag latecomers until the column exists.
-  const persistStatus = async (student, status, isLate) => {
-    const row = { academy_id: academyId, student_id: student.id, date, status, sport: student.sport, marked_by: markedBy };
-    if (!missingLatecomerCol.current) row.is_latecomer = !!isLate;
+  const persistStatus = async (row, status, isLate) => {
+    const dbRow = { academy_id: academyId, student_id: row.student.id, date, status, sport: row.sport, batch: row.batchLabel, marked_by: markedBy };
+    if (!missingLatecomerCol.current) dbRow.is_latecomer = !!isLate;
     try {
-      const { error } = await supabase.from('attendance').upsert(row, { onConflict: 'academy_id,student_id,date' });
+      const { error } = await supabase.from('attendance').upsert(dbRow, { onConflict: 'academy_id,student_id,date,sport,batch' });
       if (error) throw error;
     } catch (err) {
       if (!missingLatecomerCol.current && /is_latecomer/i.test(err.message || '')) {
         missingLatecomerCol.current = true;
-        return persistStatus(student, status, isLate); // retry once, without the column
+        return persistStatus(row, status, isLate); // retry once, without the column
       }
-      window.alert(`Couldn't save ${student.name}'s attendance: ${err.message}`);
+      window.alert(`Couldn't save ${row.student.name}'s attendance: ${err.message}`);
     }
   };
 
-  const allPChecked = bulkTargets.length > 0 && bulkTargets.every(s => records[s.id] === 'P');
-  const allAChecked = bulkTargets.length > 0 && bulkTargets.every(s => records[s.id] === 'A');
+  const allPChecked = bulkTargets.length > 0 && bulkTargets.every(r => records[r.key] === 'P');
+  const allAChecked = bulkTargets.length > 0 && bulkTargets.every(r => records[r.key] === 'A');
 
   const markAll = async (status) => {
     if (isFutureDate) { window.alert('Cannot mark attendance for future dates.'); return; }
@@ -336,33 +377,37 @@ export default function AttendanceTab() {
     const targets = bulkTargets;
     if (!targets.length) return;
     const label = status === 'P' ? 'Present' : 'Absent';
-    const alreadyAll = targets.every(s => records[s.id] === status);
+    const alreadyAll = targets.every(r => records[r.key] === status);
 
     if (!alreadyAll) {
       const ok = window.confirm(`Mark all ${targets.length} ${sportFilter} student(s) as ${label} on ${date}?`);
       if (!ok) return;
-      setRecords(prev => { const next = { ...prev }; targets.forEach(s => { next[s.id] = status; }); return next; });
-      setLateMap(prev => { const next = { ...prev }; targets.forEach(s => { next[s.id] = false; }); return next; });
-      const makeRows = () => targets.map(s => {
-        const row = { academy_id: academyId, student_id: s.id, date, status, sport: s.sport, marked_by: markedBy };
+      setRecords(prev => { const next = { ...prev }; targets.forEach(r => { next[r.key] = status; }); return next; });
+      setLateMap(prev => { const next = { ...prev }; targets.forEach(r => { next[r.key] = false; }); return next; });
+      const makeRows = () => targets.map(r => {
+        const row = { academy_id: academyId, student_id: r.student.id, date, status, sport: r.sport, batch: r.batchLabel, marked_by: markedBy };
         if (!missingLatecomerCol.current) row.is_latecomer = false;
         return row;
       });
-      let { error } = await supabase.from('attendance').upsert(makeRows(), { onConflict: 'academy_id,student_id,date' });
+      let { error } = await supabase.from('attendance').upsert(makeRows(), { onConflict: 'academy_id,student_id,date,sport,batch' });
       if (error && !missingLatecomerCol.current && /is_latecomer/i.test(error.message || '')) {
         missingLatecomerCol.current = true;
-        ({ error } = await supabase.from('attendance').upsert(makeRows(), { onConflict: 'academy_id,student_id,date' }));
+        ({ error } = await supabase.from('attendance').upsert(makeRows(), { onConflict: 'academy_id,student_id,date,sport,batch' }));
       }
       if (error) { window.alert(`Couldn't save attendance: ${error.message}`); return; }
       logAttendance(`All ${sportFilter} students → ${label} on ${date}`);
     } else {
       const ok = window.confirm(`Remove ${label} mark for all ${sportFilter} students on ${date}?`);
       if (!ok) return;
-      const clearedIds = targets.map(s => s.id);
-      setRecords(prev => { const next = { ...prev }; clearedIds.forEach(id => { delete next[id]; }); return next; });
-      const { error } = await supabase.from('attendance').delete()
-        .eq('academy_id', academyId).eq('date', date).in('student_id', clearedIds);
-      if (error) { window.alert(`Couldn't clear attendance: ${error.message}`); return; }
+      const clearedKeys = targets.map(r => r.key);
+      setRecords(prev => { const next = { ...prev }; clearedKeys.forEach(k => { delete next[k]; }); return next; });
+      // Deleted per-row (not a single bulk .in) since a student may have
+      // another untouched enrollment on the same date that must survive.
+      for (const r of targets) {
+        const { error } = await supabase.from('attendance').delete()
+          .eq('academy_id', academyId).eq('date', date).eq('student_id', r.student.id).eq('sport', r.sport).eq('batch', r.batchLabel);
+        if (error) { window.alert(`Couldn't clear attendance for ${r.student.name}: ${error.message}`); return; }
+      }
       logAttendance(`All ${label} cleared for ${sportFilter} on ${date}`);
     }
   };
@@ -402,8 +447,8 @@ export default function AttendanceTab() {
     setReloadKey(k => k + 1);
   };
 
-  const presentCount = students.filter(s => records[s.id] === 'P').length;
-  const absentCount = students.filter(s => records[s.id] === 'A').length;
+  const presentCount = students.filter(r => records[r.key] === 'P').length;
+  const absentCount = students.filter(r => records[r.key] === 'A').length;
   const notMarkedCount = students.length - presentCount - absentCount;
 
   const dateLabel = `${day} ${WEEKDAYS[dateObj.getDay()]}, ${MONTHS[month]} ${year}`;
@@ -415,9 +460,9 @@ export default function AttendanceTab() {
   const doExport = (kind) => {
     if (viewMode === 'day') {
       const columns = ['Roll No', 'Name', 'Sport', 'Batch', 'Status'];
-      const rowObjs = students.map(s => ({
-        'Roll No': s.roll_no, Name: s.name, Sport: s.sport, Batch: s.batchLabel,
-        Status: records[s.id] === 'P' ? (lateMap[s.id] ? 'Present (Late)' : 'Present') : records[s.id] === 'A' ? 'Absent' : 'Not Marked',
+      const rowObjs = students.map(r => ({
+        'Roll No': r.student.roll_no, Name: r.student.name, Sport: r.sport, Batch: r.batchLabel,
+        Status: records[r.key] === 'P' ? (lateMap[r.key] ? 'Present (Late)' : 'Present') : records[r.key] === 'A' ? 'Absent' : 'Not Marked',
       }));
       const title = `Attendance — ${dateLabel}`;
       const fname = `attendance_${date}`;
@@ -425,11 +470,11 @@ export default function AttendanceTab() {
       else exportGenericXlsx(rowObjs, `${fname}.xlsx`, 'Attendance');
     } else if (viewMode === 'month') {
       const columns = ['Roll No', 'Name', 'Sport', 'Batch', 'Present', 'Absent', '%'];
-      const rowObjs = students.map(s => {
-        const agg = periodRows[s.id] || { present: 0, absent: 0 };
+      const rowObjs = students.map(r => {
+        const agg = periodRows[r.key] || { present: 0, absent: 0 };
         const total = agg.present + agg.absent;
         const pct = total ? Math.round((agg.present / total) * 100) : 0;
-        return { 'Roll No': s.roll_no, Name: s.name, Sport: s.sport, Batch: s.batchLabel, Present: agg.present, Absent: agg.absent, '%': `${pct}%` };
+        return { 'Roll No': r.student.roll_no, Name: r.student.name, Sport: r.sport, Batch: r.batchLabel, Present: agg.present, Absent: agg.absent, '%': `${pct}%` };
       });
       const title = `Attendance Summary — ${MONTHS[month]} ${year}`;
       const fname = `attendance_${year}-${String(month + 1).padStart(2, '0')}`;
@@ -638,48 +683,48 @@ export default function AttendanceTab() {
           <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 30 }}>No students found.</div>
         )}
 
-        {!loading && viewMode === 'day' && !isFutureDate && dayStudents.map(s => {
-          const status = records[s.id];
-          const isLate = status === 'P' && !!lateMap[s.id];
-          const rowDone = !!dayStatusMap[s.sport];
+        {!loading && viewMode === 'day' && !isFutureDate && dayStudents.map(r => {
+          const status = records[r.key];
+          const isLate = status === 'P' && !!lateMap[r.key];
+          const rowDone = !!dayStatusMap[r.sport];
           const locked = rowDone && (status === 'A' || (status === 'P' && !isLate));
           const pClass = 'att-btn ' + (status === 'P' ? (isLate ? 'present late' : 'present') : 'inactive');
           const aClass = 'att-btn ' + (status === 'A' ? 'absent' : 'inactive');
           const pTitle = locked ? 'Locked — register closed' : (status === 'P' ? 'Click to clear' : (rowDone ? 'Mark as latecomer (Present)' : 'Mark Present'));
           const aTitle = locked ? 'Locked — register closed' : (status === 'A' ? 'Click to clear' : 'Mark Absent');
           return (
-            <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
-              <RollBadge rollNo={s.roll_no} />
+            <div key={r.key} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
+              <RollBadge rollNo={r.student.roll_no} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-                  {s.name}
+                  {r.student.name}
                   {isLate && (
                     <span style={{ background: '#f9731622', color: '#fb923c', border: '1px solid #f9731655', borderRadius: 5, fontSize: 9, fontWeight: 800, padding: '1px 5px', marginLeft: 5 }}>LATE</span>
                   )}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--gray)' }}>
-                  {sportFilter ? s.batchLabel : `${s.sport} · ${s.batchLabel}`}
+                  {sportFilter ? r.batchLabel : `${r.sport} · ${r.batchLabel}`}
                 </div>
               </div>
               <div className="att-btns">
-                <button className={pClass} title={pTitle} onClick={() => setStatus(s, 'P')}>P</button>
-                <button className={aClass} title={aTitle} onClick={() => setStatus(s, 'A')}>A</button>
+                <button className={pClass} title={pTitle} onClick={() => setStatus(r, 'P')}>P</button>
+                <button className={aClass} title={aTitle} onClick={() => setStatus(r, 'A')}>A</button>
               </div>
             </div>
           );
         })}
 
-        {!loading && viewMode === 'month' && students.map(s => {
-          const agg = periodRows[s.id] || { present: 0, absent: 0 };
+        {!loading && viewMode === 'month' && students.map(r => {
+          const agg = periodRows[r.key] || { present: 0, absent: 0 };
           const total = agg.present + agg.absent;
           const pct = total ? Math.round((agg.present / total) * 100) : 0;
           return (
-            <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
-              <RollBadge rollNo={s.roll_no} />
+            <div key={r.key} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }}>
+              <RollBadge rollNo={r.student.roll_no} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{r.student.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--gray)' }}>
-                  {sportFilter ? s.batchLabel : `${s.sport} · ${s.batchLabel}`}
+                  {sportFilter ? r.batchLabel : `${r.sport} · ${r.batchLabel}`}
                 </div>
               </div>
               <div style={{ textAlign: 'right', fontSize: 12 }}>
