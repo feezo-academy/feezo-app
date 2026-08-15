@@ -12,6 +12,17 @@ const pad = (n) => String(n).padStart(2, '0');
 const toIso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const daysInMonth = (y, m) => new Date(y, m, 0).getDate(); // m is 1-indexed
 
+// Trimmed + lowercased comparison so a stray space or casing difference
+// between a sport/batch on a student's enrollment and the one used in a
+// filter or on an attendance row doesn't cause a silent mismatch.
+const norm = (v) => (v || '').toString().trim().toLowerCase();
+
+// A composite key per enrollment (student + sport + batch) — matches the
+// same pattern AttendanceTab uses, so a student with two enrollments (same
+// or different sport) gets exactly one fee row per enrollment, never merged
+// and never duplicated.
+const keyFor = (studentId, sport, batchLabel) => `${studentId}::${norm(sport)}::${norm(batchLabel)}`;
+
 function buildMsg(tpl, ctx) {
   return tpl
     .replace(/{name}/g, ctx.name || '')
@@ -21,79 +32,156 @@ function buildMsg(tpl, ctx) {
     .replace(/{method}/g, ctx.method || '');
 }
 
-// A fee entry only counts as "paid" if status is paid AND it has a positive amount —
-// matches isPaid() in the HTML app.
-function isPaidEntry(fee) {
-  if (!fee || fee.status !== 'paid') return false;
-  const amt = parseInt(fee.amount, 10);
-  return !isNaN(amt) && amt > 0;
+// Returns 'unpaid' | 'partial' | 'paid' by comparing what's been paid
+// (fee.amount, a running total) against the total owed (fee.amount_due).
+// This is the single source of truth for a fee's state — the stored
+// `status` column is kept in sync with this on every save, so filters/
+// exports can read it directly without recomputing.
+// Legacy rows saved before partial-payment support have no amount_due;
+// those fall back to their old stored status so existing paid/unpaid
+// history isn't reinterpreted.
+function feeStatus(fee) {
+  if (!fee) return 'unpaid';
+  const due = parseInt(fee.amount_due, 10);
+  const paid = parseInt(fee.amount, 10) || 0;
+  if (!due || isNaN(due)) return (fee.status === 'paid' && paid > 0) ? 'paid' : 'unpaid';
+  if (paid <= 0) return 'unpaid';
+  if (paid >= due) return 'paid';
+  return 'partial';
 }
+const isPaidEntry = (fee) => feeStatus(fee) === 'paid';
+const isPartialEntry = (fee) => feeStatus(fee) === 'partial';
 
-// A student owes fees for a given month only if they were enrolled on/before
-// that month AND they have at least one Present attendance record in it —
-// matches isEnrolledOnDate() + studentAttendedMonth() in the HTML app.
-function isEligible(student, year, month, attendanceByStudent) {
+// A student owes fees for a given *enrollment* (sport) for a given month only
+// if they were enrolled on/before that month AND they have at least one
+// Present attendance record for that specific sport in it — matches
+// isEnrolledOnDate() + studentAttendedMonth() in the HTML app, extended to be
+// per-sport so a student attending only Football doesn't get incorrectly
+// flagged as fee-eligible for Swimming too.
+function isEligible(student, year, month, attendanceByStudent, sport) {
   if (student.join_date) {
     const checkEnd = toIso(new Date(year, month, 0)); // last day of month
     if (student.join_date > checkEnd) return false;
   }
   const rows = attendanceByStudent[student.id];
-  return !!(rows && rows.some(r => r.status === 'P'));
+  return !!(rows && rows.some(r => r.status === 'P' && (!sport || norm(r.sport) === norm(sport))));
 }
 
-// Staff can create a first-time entry and edit it freely while it's still unpaid.
-// Once it's marked paid, only admin can revert it to unpaid or change the amount.
+// Staff can create a first-time entry and add further installments while
+// the fee isn't yet fully paid. Once the full amount has been collected,
+// only admin can reopen (reset) or otherwise touch it.
 function canEditFee(fee, isAdmin) {
   if (isAdmin) return true;
   if (!fee) return true;
-  return fee.status !== 'paid';
+  return feeStatus(fee) !== 'paid';
 }
 
-// Modal for creating/editing a single student's fee entry for a given month+sport.
-function FeeEntryModal({ student, monthKey, monthLabel, sport, fee, onClose, onSaved }) {
-  const { academyId, appUser, user } = useAuth();
-  const [status, setStatus] = useState(fee?.status === 'paid' ? 'paid' : 'unpaid');
-  const [amount, setAmount] = useState(fee?.amount ?? '');
+// Modal for creating/editing a single student's fee entry for a given
+// month + sport + batch. Supports partial payments: the first save records
+// the Total Amount Due plus whatever's being paid right now. If that's
+// less than the total, the fee stays "Partially Paid" until enough
+// installments bring it to the full amount — staff can only ADD a new
+// installment (auto-totalled), never edit or overwrite what's already
+// been collected. Once fully paid it locks; only admin can reset it.
+function FeeEntryModal({ student, monthKey, monthLabel, sport, batchLabel, fee, onClose, onSaved }) {
+  const { academyId, appUser, user, isAdmin } = useAuth();
+  const status = feeStatus(fee);
+  const due = fee?.amount_due ? parseInt(fee.amount_due, 10) : null;
+  const paidSoFar = fee?.amount ? parseInt(fee.amount, 10) : 0;
+  const remaining = due != null ? Math.max(due - paidSoFar, 0) : null;
+  const payments = fee?.payments || [];
+  const lastPayment = payments.length > 0 ? payments[payments.length - 1] : null;
+  const isFirstEntry = status === 'unpaid' && !due;
+  const locked = status === 'paid' && !isAdmin;
+
+  const [totalDue, setTotalDue] = useState(due ?? '');
+  const [payNow, setPayNow] = useState('');
   const [method, setMethod] = useState(fee?.method || 'cash');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const save = async () => {
     setError('');
-    const amt = parseInt(amount, 10) || 0;
-    if (status === 'paid' && amt < 1) {
-      setError('Please enter a valid amount');
-      return;
+    const nowAmt = parseInt(payNow, 10) || 0;
+    let payload;
+
+    if (isFirstEntry) {
+      const dueAmt = parseInt(totalDue, 10);
+      if (!dueAmt || dueAmt < 1) { setError('Enter the total amount due'); return; }
+      if (nowAmt < 0) { setError('Invalid amount'); return; }
+      const newPayments = nowAmt > 0
+        ? [...payments, { amount: nowAmt, method, by: appUser?.name || user?.email || '', at: new Date().toISOString() }]
+        : payments;
+      const newStatus = nowAmt >= dueAmt ? 'paid' : (nowAmt > 0 ? 'partial' : 'unpaid');
+      payload = {
+        academy_id: academyId, student_id: student.id, sport, batch_label: batchLabel, month: monthKey,
+        status: newStatus, amount_due: dueAmt, amount: nowAmt,
+        method: nowAmt > 0 ? method : null,
+        paid_date: newStatus === 'paid' ? toIso(new Date()) : null,
+        collected_by: appUser?.name || user?.email || '',
+        payments: newPayments, msg_sent: fee?.msg_sent || [],
+      };
+    } else {
+      if (!nowAmt || nowAmt < 1) { setError('Enter the amount being paid now'); return; }
+      const dueAmt = parseInt(fee.amount_due, 10);
+      const newPaid = paidSoFar + nowAmt;
+      const newPayments = [...payments, { amount: nowAmt, method, by: appUser?.name || user?.email || '', at: new Date().toISOString() }];
+      const newStatus = newPaid >= dueAmt ? 'paid' : 'partial';
+      payload = {
+        academy_id: academyId, student_id: student.id, sport, batch_label: batchLabel, month: monthKey,
+        status: newStatus, amount_due: dueAmt, amount: newPaid, method,
+        paid_date: newStatus === 'paid' ? toIso(new Date()) : (fee.paid_date || null),
+        collected_by: appUser?.name || user?.email || '',
+        payments: newPayments, msg_sent: fee.msg_sent || [],
+      };
     }
+
     setSaving(true);
     try {
-      const payload = {
-        academy_id: academyId,
-        student_id: student.id,
-        sport,
-        month: monthKey,
-        status,
-        amount: amt || null,
-        method: status === 'paid' ? method : null,
-        paid_date: status === 'paid' ? (fee?.paid_date || toIso(new Date())) : null,
-        collected_by: appUser?.name || user?.email || '',
-        msg_sent: fee?.msg_sent || [],
-      };
       const { data, error: err } = await supabase
         .from('fees')
-        .upsert(payload, { onConflict: 'student_id,sport,month' })
+        .upsert(payload, { onConflict: 'student_id,sport,batch_label,month' })
         .select()
         .single();
       if (err) throw err;
       logActivity({
         academyId, actorId: appUser?.id, actorName: appUser?.name || user?.email,
-        message: status === 'paid'
-          ? `Marked ${sport} fee paid for ${student.name} (${monthLabel}, ₹${amt})`
-          : `Marked ${sport} fee unpaid for ${student.name} (${monthLabel})`,
+        message: payload.status === 'paid'
+          ? `Marked ${sport}${batchLabel ? ' (' + batchLabel + ')' : ''} fee fully paid for ${student.name} (${monthLabel}, ₹${payload.amount})`
+          : `Recorded ₹${nowAmt} payment for ${student.name} — ${sport}${batchLabel ? ' (' + batchLabel + ')' : ''} (${monthLabel}), ₹${payload.amount}/₹${payload.amount_due} so far`,
       });
       onSaved(data);
     } catch (err) {
       setError(err.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetToUnpaid = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const payload = {
+        academy_id: academyId, student_id: student.id, sport, batch_label: batchLabel, month: monthKey,
+        status: 'unpaid', amount_due: fee?.amount_due || null, amount: null, method: null,
+        paid_date: null, collected_by: appUser?.name || user?.email || '',
+        payments: [], msg_sent: fee?.msg_sent || [],
+      };
+      const { data, error: err } = await supabase
+        .from('fees')
+        .upsert(payload, { onConflict: 'student_id,sport,batch_label,month' })
+        .select()
+        .single();
+      if (err) throw err;
+      logActivity({
+        academyId, actorId: appUser?.id, actorName: appUser?.name || user?.email,
+        message: `Reset ${sport}${batchLabel ? ' (' + batchLabel + ')' : ''} fee to unpaid for ${student.name} (${monthLabel})`,
+      });
+      onSaved(data);
+    } catch (err) {
+      setError(err.message || 'Failed to reset');
     } finally {
       setSaving(false);
     }
@@ -109,31 +197,61 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, fee, onClose, onS
 
         {error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
-        <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 10 }}>{monthLabel} · {sport}</div>
-
-        <div className="form-group">
-          <label className="form-label">Payment Status</label>
-          <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
-            <option value="paid">✅ Paid</option>
-            <option value="unpaid">❌ Not Paid</option>
-          </select>
+        <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 10 }}>
+          {monthLabel} · {sport}{batchLabel ? ` · ${batchLabel}` : ''}
         </div>
 
-        {status === 'paid' && (
+        {!isFirstEntry && (
+          <div style={{ background: 'var(--card2)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ color: 'var(--gray)' }}>Total Due</span><span>₹{due}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ color: 'var(--gray)' }}>Paid So Far</span><span>₹{paidSoFar}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+              <span>Remaining</span><span style={{ color: remaining > 0 ? 'var(--red)' : 'var(--green)' }}>₹{remaining}</span>
+            </div>
+            {lastPayment && (
+              <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.1)', color: 'var(--gray)' }}>
+                Last payment: ₹{lastPayment.amount} · {lastPayment.method} · {lastPayment.by}
+                {lastPayment.at && <> · {new Date(lastPayment.at).toLocaleDateString()}</>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {locked ? (
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 10 }}>
+            🔒 This fee is fully paid. Only an admin can reopen it.
+          </div>
+        ) : (
           <>
+            {isFirstEntry && (
+              <div className="form-group">
+                <label className="form-label">Total Amount Due ₹</label>
+                <input type="number" min="1" className="form-input" value={totalDue} onChange={e => setTotalDue(e.target.value)} placeholder="e.g. 300" />
+              </div>
+            )}
+
             <div className="form-group">
-              <label className="form-label">Amount Paid ₹</label>
-              <input type="number" min="1" className="form-input" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Enter amount" />
+              <label className="form-label">
+                {isFirstEntry ? 'Amount Paying Now ₹ (leave blank if none yet)' : `Amount Paying Now ₹ (remaining ₹${remaining})`}
+              </label>
+              <input type="number" min={isFirstEntry ? '0' : '1'} className="form-input" value={payNow} onChange={e => setPayNow(e.target.value)} placeholder="Enter amount" />
             </div>
-            <div className="form-group">
-              <label className="form-label">Payment Method</label>
-              <select className="form-select" value={method} onChange={e => setMethod(e.target.value)}>
-                <option value="cash">Cash</option>
-                <option value="upi">UPI</option>
-                <option value="card">Card</option>
-                <option value="bank">Bank Transfer</option>
-              </select>
-            </div>
+
+            {(isFirstEntry ? parseInt(payNow, 10) > 0 : true) && (
+              <div className="form-group">
+                <label className="form-label">Payment Method</label>
+                <select className="form-select" value={method} onChange={e => setMethod(e.target.value)}>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="card">Card</option>
+                  <option value="bank">Bank Transfer</option>
+                </select>
+              </div>
+            )}
           </>
         )}
 
@@ -141,12 +259,29 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, fee, onClose, onS
           <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 8 }}>Last saved by: {fee.collected_by}</div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-          <button className="btn" style={{ flex: 1, background: 'var(--card2)' }} onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" style={{ flex: 2 }} onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : '💾 Save'}
+        {isAdmin && status !== 'unpaid' && !confirmReset && (
+          <button className="btn" style={{ width: '100%', fontSize: 11, color: 'var(--red)', background: 'transparent', border: '1px solid var(--red)', marginBottom: 8 }} onClick={() => setConfirmReset(true)}>
+            🔓 Admin: Reset to Unpaid
           </button>
-        </div>
+        )}
+        {confirmReset && (
+          <div style={{ fontSize: 11, marginBottom: 8, color: 'var(--red)' }}>
+            This clears all recorded payments for this entry. Are you sure?
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <button className="btn" style={{ flex: 1 }} onClick={() => setConfirmReset(false)}>Cancel</button>
+              <button className="btn" style={{ flex: 1, background: 'var(--red)', color: '#fff' }} onClick={resetToUnpaid} disabled={saving}>Confirm Reset</button>
+            </div>
+          </div>
+        )}
+
+        {!locked && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button className="btn" style={{ flex: 1, background: 'var(--card2)' }} onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" style={{ flex: 2 }} onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : '💾 Save'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -212,7 +347,7 @@ export default function FeesTab() {
 
   const feeMap = useMemo(() => {
     const m = {};
-    fees.forEach(f => { m[`${f.student_id}|${f.sport}|${f.month}`] = f; });
+    fees.forEach(f => { m[`${f.student_id}|${norm(f.sport)}|${norm(f.batch_label)}|${f.month}`] = f; });
     return m;
   }, [fees]);
 
@@ -220,37 +355,60 @@ export default function FeesTab() {
     visibleBatches.filter(b => !sportFilter || b.sport === sportFilter),
     [visibleBatches, sportFilter]);
 
-  const sportScopedStudents = useMemo(() =>
-    visibleStudents.filter(s => (!sportFilter || s.sport === sportFilter) && (!batchFilter || s.batch === batchFilter)),
-    [visibleStudents, sportFilter, batchFilter]);
+  // Flatten each student's enrollments into one row per sport+batch — same
+  // pattern as AttendanceTab — so a student in two sports gets two separate,
+  // independently trackable fee rows instead of being collapsed into one
+  // (which was silently dropping the second sport's fee entirely).
+  const enrollmentRows = useMemo(() => {
+    const rows = [];
+    visibleStudents.forEach(s => {
+      const enrollments = (s.enrollments && s.enrollments.length > 0)
+        ? s.enrollments : [{ sport: s.sport, batchLabel: s.batchLabel }];
+      enrollments.forEach(en => {
+        if (!en.sport) return;
+        rows.push({ student: s, sport: en.sport, batchLabel: en.batchLabel, key: keyFor(s.id, en.sport, en.batchLabel) });
+      });
+    });
+    return rows;
+  }, [visibleStudents]);
 
-  const searchedStudents = useMemo(() => {
-    if (!search.trim()) return sportScopedStudents;
+  const sportScopedRows = useMemo(() =>
+    enrollmentRows.filter(r =>
+      (!sportFilter || norm(r.sport) === norm(sportFilter)) &&
+      (!batchFilter || norm(r.batchLabel) === norm(batchFilter))
+    ),
+    [enrollmentRows, sportFilter, batchFilter]);
+
+  const searchedRows = useMemo(() => {
+    if (!search.trim()) return sportScopedRows;
     const q = search.trim().toLowerCase();
-    return sportScopedStudents.filter(s => (s.name || '').toLowerCase().includes(q) || (s.roll_no || '').toLowerCase().includes(q));
-  }, [sportScopedStudents, search]);
+    return sportScopedRows.filter(r => (r.student.name || '').toLowerCase().includes(q) || (r.student.roll_no || '').toLowerCase().includes(q));
+  }, [sportScopedRows, search]);
 
-  // Builds the display rows for one month: eligible students (enrolled + attended),
-  // each paired with their fee entry (or null if not yet recorded). Students with
-  // zero attendance that month are tracked separately and only mixed into `rows`
-  // when includeNoAttendance is checked.
+  // Builds the display rows for one month: eligible enrollments (enrolled +
+  // attended that specific sport), each paired with their fee entry (or null
+  // if not yet recorded). Enrollments with zero attendance that month are
+  // tracked separately and only mixed into `rows` when includeNoAttendance
+  // is checked.
   function buildMonthRows(y, m) {
     const monthKey = `${y}-${pad(m)}`;
     const attByStudent = attendanceByStudentByMonth[monthKey] || {};
     const eligible = [];
     const noAttendance = [];
-    searchedStudents.forEach(s => {
+    searchedRows.forEach(r => {
+      const s = r.student;
       const enrolledBy = !s.join_date || s.join_date <= toIso(new Date(y, m, 0));
       if (!enrolledBy) return;
-      if (isEligible(s, y, m, attByStudent)) {
-        eligible.push(s);
+      if (isEligible(s, y, m, attByStudent, r.sport)) {
+        eligible.push(r);
       } else {
-        noAttendance.push(s);
+        noAttendance.push(r);
       }
     });
-    const toRow = (s) => {
-      const fee = feeMap[`${s.id}|${s.sport}|${monthKey}`] || null;
-      return { student: s, fee, monthKey, paid: isPaidEntry(fee) };
+    const toRow = (r) => {
+      const fee = feeMap[`${r.student.id}|${norm(r.sport)}|${norm(r.batchLabel)}|${monthKey}`] || null;
+      const st = feeStatus(fee);
+      return { student: r.student, sport: r.sport, batchLabel: r.batchLabel, fee, monthKey, status: st, paid: st === 'paid', key: r.key };
     };
     const rows = eligible.map(toRow).concat(includeNoAttendance ? noAttendance.map(toRow) : []);
     return { monthKey, rows, noAttendance };
@@ -260,14 +418,18 @@ export default function FeesTab() {
     if (viewMode === 'month') return [buildMonthRows(year, month)];
     return Array.from({ length: 12 }, (_, i) => buildMonthRows(year, i + 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, year, month, searchedStudents, attendanceByStudentByMonth, feeMap, includeNoAttendance]);
+  }, [viewMode, year, month, searchedRows, attendanceByStudentByMonth, feeMap, includeNoAttendance]);
 
   const allRows = useMemo(() => periods.flatMap(p => p.rows), [periods]);
-  const paidRows = useMemo(() => allRows.filter(r => r.paid), [allRows]);
-  const unpaidRows = useMemo(() => allRows.filter(r => !r.paid), [allRows]);
+  const paidRows = useMemo(() => allRows.filter(r => r.status === 'paid'), [allRows]);
+  const partialRows = useMemo(() => allRows.filter(r => r.status === 'partial'), [allRows]);
+  const unpaidRows = useMemo(() => allRows.filter(r => r.status === 'unpaid'), [allRows]);
   const totalNoAttendance = useMemo(() => periods.reduce((s, p) => s + p.noAttendance.length, 0), [periods]);
 
-  const activeRows = statusFilter === 'all' ? allRows : statusFilter === 'paid' ? paidRows : unpaidRows;
+  const activeRows = statusFilter === 'all' ? allRows
+    : statusFilter === 'paid' ? paidRows
+    : statusFilter === 'partial' ? partialRows
+    : unpaidRows;
 
   const monthLabelFor = (mk) => {
     const [y, m] = mk.split('-').map(Number);
@@ -285,7 +447,7 @@ export default function FeesTab() {
     setSendModal({ row, student: row.student, month: monthLabel, kind: 'paid', text });
   };
   const openEntry = (row) => {
-    setEntryModal({ student: row.student, monthKey: row.monthKey, monthLabel: monthLabelFor(row.monthKey), sport: row.student.sport, fee: row.fee });
+    setEntryModal({ student: row.student, monthKey: row.monthKey, monthLabel: monthLabelFor(row.monthKey), sport: row.sport, batchLabel: row.batchLabel, fee: row.fee });
   };
 
   // Logs a sent reminder/thank-you against the fee row (creating a bare unpaid
@@ -298,18 +460,21 @@ export default function FeesTab() {
     const payload = {
       academy_id: academyId,
       student_id: row.student.id,
-      sport: row.student.sport,
+      sport: row.sport,
+      batch_label: row.batchLabel,
       month: row.monthKey,
       status: existing?.status || 'unpaid',
+      amount_due: existing?.amount_due ?? null,
       amount: existing?.amount ?? null,
       method: existing?.method ?? null,
       paid_date: existing?.paid_date ?? null,
       collected_by: existing?.collected_by ?? null,
+      payments: existing?.payments || [],
       msg_sent: msgSent,
     };
     const { data, error } = await supabase
       .from('fees')
-      .upsert(payload, { onConflict: 'student_id,sport,month' })
+      .upsert(payload, { onConflict: 'student_id,sport,batch_label,month' })
       .select()
       .single();
     if (!error && data) {
@@ -331,8 +496,11 @@ export default function FeesTab() {
   };
 
   const exportRows = activeRows.map(r => ({
-    Student: r.student.name, Roll: r.student.roll_no, Month: monthLabelFor(r.monthKey),
-    Amount: r.fee?.amount || 0, Status: r.paid ? 'paid' : 'unpaid',
+    Student: r.student.name, Roll: r.student.roll_no, Sport: r.sport, Batch: r.batchLabel,
+    Month: monthLabelFor(r.monthKey),
+    'Amount Due': r.fee?.amount_due || 0,
+    'Amount Paid': r.fee?.amount || 0,
+    Status: r.status === 'paid' ? 'Paid' : r.status === 'partial' ? 'Partially Paid' : 'Unpaid',
   }));
 
   return (
@@ -340,7 +508,7 @@ export default function FeesTab() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>💰 Fees</div>
         <div style={{ display: 'flex', gap: 5 }}>
-          <button className="btn btn-gold btn-sm" onClick={() => exportGenericPdf('Fees Report', ['Student', 'Roll', 'Month', 'Amount', 'Status'], exportRows.map(Object.values), 'fees.pdf')}>PDF</button>
+          <button className="btn btn-gold btn-sm" onClick={() => exportGenericPdf('Fees Report', ['Student', 'Roll', 'Sport', 'Batch', 'Month', 'Amount Due', 'Amount Paid', 'Status'], exportRows.map(Object.values), 'fees.pdf')}>PDF</button>
           <button className="btn btn-success btn-sm" onClick={() => exportGenericXlsx(exportRows, 'fees.xlsx', 'Fees')}>XL</button>
         </div>
       </div>
@@ -351,7 +519,7 @@ export default function FeesTab() {
           onClick={() => setFiltersOpen(v => !v)}
           style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
         >
-          <span>Filters — {viewMode === 'year' ? `Full Year ${year}` : `${MONTHS[month - 1]} ${year}`}{sportFilter ? ` · ${sportFilter}` : ''}{batchFilter ? ` · ${batchesForSport.find(b => b.name === batchFilter)?.batchLabel || ''}` : ''}</span>
+          <span>Filters — {viewMode === 'year' ? `Full Year ${year}` : `${MONTHS[month - 1]} ${year}`}{sportFilter ? ` · ${sportFilter}` : ''}{batchFilter ? ` · ${batchFilter}` : ''}</span>
           <span>{filtersOpen ? '▲' : '▼'}</span>
         </button>
 
@@ -403,7 +571,7 @@ export default function FeesTab() {
               </select>
               <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
                 <option value="">All Batches</option>
-                {batchesForSport.map(b => <option key={b.id} value={b.name}>{b.batchLabel}</option>)}
+                {batchesForSport.map(b => <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>)}
               </select>
             </div>
           </div>
@@ -419,6 +587,7 @@ export default function FeesTab() {
         <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="all">All Status</option>
           <option value="paid">Paid ({paidRows.length})</option>
+          <option value="partial">Partially Paid ({partialRows.length})</option>
           <option value="unpaid">Unpaid ({unpaidRows.length})</option>
         </select>
       </div>
@@ -435,7 +604,7 @@ export default function FeesTab() {
 
         {!loading && activeRows.length === 0 && (
           <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--gray)' }}>
-            {statusFilter === 'paid' ? 'No paid students yet.' : statusFilter === 'unpaid' ? 'No unpaid students 🎉' : 'No students to show.'}
+            {statusFilter === 'paid' ? 'No paid students yet.' : statusFilter === 'partial' ? 'No partially paid students.' : statusFilter === 'unpaid' ? 'No unpaid students 🎉' : 'No students to show.'}
           </div>
         )}
 
@@ -447,14 +616,14 @@ export default function FeesTab() {
               <div key={p.monthKey}>
                 <div style={{ padding: '6px 4px', fontSize: 13, fontWeight: 700, color: 'var(--gold)' }}>{monthLabelFor(p.monthKey)}</div>
                 {pRows.map(r => (
-                  <FeeRow key={r.student.id + r.monthKey} row={r} isAdmin={isAdmin} onReminder={openReminder} onThankYou={openThankYou} onEdit={openEntry} />
+                  <FeeRow key={r.key + r.monthKey} row={r} isAdmin={isAdmin} onReminder={openReminder} onThankYou={openThankYou} onEdit={openEntry} />
                 ))}
               </div>
             );
           })
         ) : (
           !loading && activeRows.map(r => (
-            <FeeRow key={r.student.id + r.monthKey} row={r} isAdmin={isAdmin} onReminder={openReminder} onThankYou={openThankYou} onEdit={openEntry} />
+            <FeeRow key={r.key + r.monthKey} row={r} isAdmin={isAdmin} onReminder={openReminder} onThankYou={openThankYou} onEdit={openEntry} />
           ))
         )}
 
@@ -477,9 +646,11 @@ export default function FeesTab() {
           monthKey={entryModal.monthKey}
           monthLabel={entryModal.monthLabel}
           sport={entryModal.sport}
+          batchLabel={entryModal.batchLabel}
           fee={entryModal.fee}
           onClose={() => setEntryModal(null)}
           onSaved={(updated) => {
+            const wasFullyPaid = feeStatus(entryModal.fee) === 'paid';
             setFees(prev => {
               const idx = prev.findIndex(f => f.id === updated.id);
               if (idx === -1) return [...prev, updated];
@@ -488,6 +659,20 @@ export default function FeesTab() {
               return next;
             });
             setEntryModal(null);
+            // Payment just crossed from partial/unpaid to fully paid — prompt
+            // to send the thank-you message right away instead of making
+            // staff hunt the row down in the Paid tab afterward. If they
+            // close the popup without sending, recordMsgSent never runs, so
+            // it's never counted.
+            if (!wasFullyPaid && feeStatus(updated) === 'paid') {
+              openThankYou({
+                student: entryModal.student,
+                sport: entryModal.sport,
+                batchLabel: entryModal.batchLabel,
+                monthKey: entryModal.monthKey,
+                fee: updated,
+              });
+            }
           }}
         />
       )}
@@ -496,30 +681,40 @@ export default function FeesTab() {
 }
 
 function FeeRow({ row, isAdmin, onReminder, onThankYou, onEdit }) {
-  const { student, fee, paid } = row;
+  const { student, sport, batchLabel, fee, status, paid } = row;
   const editable = canEditFee(fee, isAdmin);
   // A fee row can exist purely because a reminder was logged against it (see
   // recordMsgSent) — that shouldn't flip the button to "Edit". Only treat it
   // as a real entry once someone has actually saved payment info.
   const hasEntry = !!fee?.collected_by;
-  const btnLabel = paid && !editable ? '🔒 Paid' : (hasEntry ? '✏️ Edit' : '💳 Pay');
+  const partial = status === 'partial';
+  const due = fee?.amount_due ? parseInt(fee.amount_due, 10) : null;
+  const amountPaid = fee?.amount ? parseInt(fee.amount, 10) : 0;
+  const remaining = due != null ? Math.max(due - amountPaid, 0) : null;
+  const btnLabel = paid && !editable ? '🔒 Paid' : (partial ? '➕ Add Payment' : (hasEntry ? '✏️ Edit' : '💳 Pay'));
+  const badgeLabel = paid ? 'paid' : partial ? 'partially paid' : 'unpaid';
   const reminderCount = (fee?.msg_sent || []).filter(m => m.kind === 'reminder').length;
+  const thankYouCount = (fee?.msg_sent || []).filter(m => m.kind === 'paid').length;
 
   return (
     <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '10px 10px', marginBottom: 8, flexWrap: 'nowrap', overflow: 'hidden' }}>
       <div style={{ flex: '1 1 0%', minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name}</div>
         <div style={{ fontSize: 10, color: 'var(--gray)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {student.batchLabel || student.sport}
+          {sport}{batchLabel ? ` · ${batchLabel}` : ''}
+          {partial && due != null && <span style={{ color: 'var(--gold)' }}> · ₹{amountPaid}/₹{due} (₹{remaining} left)</span>}
           {fee?.method && <span> · {fee.method}</span>}
           {fee?.collected_by && <span style={{ color: 'var(--gold)' }}> · 👤 {fee.collected_by}</span>}
         </div>
       </div>
-      <span className={'badge ' + (paid ? 'badge-green' : 'badge-red')} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, flexShrink: 0, whiteSpace: 'nowrap' }}>
-        {paid ? 'paid' : 'unpaid'}
+      <span
+        className={'badge ' + (paid ? 'badge-green' : partial ? 'badge-orange' : 'badge-red')}
+        style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, flexShrink: 0, whiteSpace: 'nowrap', ...(partial ? { background: 'rgba(230,160,20,0.18)', color: '#e0a020' } : {}) }}
+      >
+        {badgeLabel}
       </span>
       {paid ? (
-        <button className="btn btn-outline" title="Send thank-you" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }} onClick={() => onThankYou(row)}>🎉</button>
+        <button className="btn btn-outline" title="Send thank-you" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }} onClick={() => onThankYou(row)}>🎉{thankYouCount > 0 ? ` ${thankYouCount}` : ''}</button>
       ) : (
         <button className="btn btn-outline" title="Send reminder" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }} onClick={() => onReminder(row)}>💬{reminderCount > 0 ? ` ${reminderCount}` : ''}</button>
       )}
