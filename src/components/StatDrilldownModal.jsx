@@ -73,20 +73,32 @@ export default function StatDrilldownModal({ title, icon, students = [], rows, o
           {isRowMode ? (
             sortedRows.map((r, i) => (
               <div key={r.id || i} className="card"
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', marginBottom: 8, fontSize: 13 }}>
-                <div style={{ fontWeight: 700, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {r.name}
+                style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px', marginBottom: 8, fontSize: 13 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontWeight: 700, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {r.name}
+                  </div>
+                  <div style={{ fontWeight: 700, color: 'var(--accent2)', flexShrink: 0, width: 32, textAlign: 'center' }}>
+                    {r.monthShort}
+                  </div>
+                  {r.contact ? (
+                    <a href={`tel:${r.contact}`} onClick={e => e.stopPropagation()}
+                      style={{ color: 'var(--gray)', fontSize: 12.5, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
+                      📞 {r.contact}
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: 11, color: 'var(--gray)', flexShrink: 0 }}>No contact</span>
+                  )}
                 </div>
-                <div style={{ fontWeight: 700, color: 'var(--accent2)', flexShrink: 0, width: 32, textAlign: 'center' }}>
-                  {r.monthShort}
-                </div>
-                {r.contact ? (
-                  <a href={`tel:${r.contact}`} onClick={e => e.stopPropagation()}
-                    style={{ color: 'var(--gray)', fontSize: 12.5, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
-                    📞 {r.contact}
-                  </a>
-                ) : (
-                  <span style={{ fontSize: 11, color: 'var(--gray)', flexShrink: 0 }}>No contact</span>
+                {(r.sport || r.partial) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--gray)' }}>
+                    {r.sport && <span>{r.sport}{r.batchLabel ? ` · ${r.batchLabel}` : ''}</span>}
+                    {r.partial && (
+                      <span style={{ marginLeft: 'auto', fontWeight: 700, color: '#e0a020', background: 'rgba(230,160,20,0.14)', borderRadius: 6, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+                        ₹{r.paidSoFar}/₹{r.due} · ₹{r.remaining} left
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             ))
