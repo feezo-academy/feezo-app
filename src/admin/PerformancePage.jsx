@@ -72,6 +72,21 @@ export default function PerformancePage() {
   };
   const saveCourseWeight = (val) => saveWeight(100 - Math.max(0, Math.min(100, val)));
 
+  // local text state for the split inputs so an in-progress edit (e.g. clearing
+  // the field to retype) never gets committed as 0 — only commits on blur
+  const [attendanceInput, setAttendanceInput] = useState(String(attendanceWeight));
+  const [programInput, setProgramInput] = useState(String(courseWeight));
+  useEffect(() => { setAttendanceInput(String(attendanceWeight)); }, [attendanceWeight]);
+  useEffect(() => { setProgramInput(String(courseWeight)); }, [courseWeight]);
+  const commitAttendanceInput = () => {
+    if (attendanceInput === '') { setAttendanceInput(String(attendanceWeight)); return; }
+    saveWeight(Number(attendanceInput));
+  };
+  const commitProgramInput = () => {
+    if (programInput === '') { setProgramInput(String(courseWeight)); return; }
+    saveCourseWeight(Number(programInput));
+  };
+
   // attendance % per student+sport
   const attendancePct = useMemo(() => {
     const buckets = {};
@@ -216,12 +231,16 @@ export default function PerformancePage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 3 }}>Attendance</div>
                   <input type="number" min={0} max={100} className="form-input" style={{ width: '100%', fontSize: 12, padding: '7px 8px' }}
-                    value={attendanceWeight} onChange={e => saveWeight(Number(e.target.value))} />
+                    value={attendanceInput}
+                    onChange={e => setAttendanceInput(e.target.value)}
+                    onBlur={commitAttendanceInput} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 3 }}>Course</div>
+                  <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 3 }}>Program</div>
                   <input type="number" min={0} max={100} className="form-input" style={{ width: '100%', fontSize: 12, padding: '7px 8px' }}
-                    value={courseWeight} onChange={e => saveCourseWeight(Number(e.target.value))} />
+                    value={programInput}
+                    onChange={e => setProgramInput(e.target.value)}
+                    onBlur={commitProgramInput} />
                 </div>
               </div>
             </div>
@@ -269,24 +288,32 @@ export default function PerformancePage() {
       {!loading && filteredRows.map((r, i) => (
         <div key={r.key} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
           onClick={() => setAwardFor(r)}>
-          <div style={{ width: 28, height: 28, borderRadius: '50%', background: i < 3 ? '#2563eb' : '#1e3a5f', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+          <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
             {i + 1}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ fontWeight: 700 }}>{r.student.name}</div>
-              <button
-                onClick={(e) => { e.stopPropagation(); setChartsFor(r); }}
-                title="View charts"
-                style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', fontSize: 13, lineHeight: 1, color: '#2563eb', flexShrink: 0 }}
-              >📊</button>
-            </div>
+            <div style={{ fontWeight: 700 }}>{r.student.name}</div>
             <div style={{ fontSize: 11, color: 'var(--gray)' }}>{r.sport} · {r.batchLabel}</div>
             <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 2 }}>
               📆 {r.attendancePct.toFixed(0)}% · 🏆 {r.coursePct.toFixed(0)}%
             </div>
           </div>
-          <div style={{ fontWeight: 800, color: 'var(--accent2)', fontSize: 15 }}>{r.finalScore.toFixed(0)}</div>
+          {/* chart icon column — fixed width so it lines up in a straight column
+              across every row, right next to the total-points column */}
+          <div style={{ width: 30, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+            <span
+              onClick={(e) => { e.stopPropagation(); setChartsFor(r); }}
+              title="View charts"
+              role="button"
+              style={{
+                display: 'inline-block', width: 20, height: 20, borderRadius: '50%', cursor: 'pointer', position: 'relative', flexShrink: 0,
+                background: 'conic-gradient(#f4695f 0deg 60deg, #f8c559 60deg 120deg, #1a9e4c 120deg 180deg, #5b9bd9 180deg 240deg, #1976d2 240deg 300deg, #b04a4a 300deg 360deg)',
+              }}
+            >
+              <span style={{ position: 'absolute', inset: 4.5, borderRadius: '50%', background: 'var(--card)' }} />
+            </span>
+          </div>
+          <div style={{ width: 44, textAlign: 'right', fontWeight: 800, color: 'var(--accent2)', fontSize: 15, flexShrink: 0 }}>{r.finalScore.toFixed(0)}</div>
         </div>
       ))}
       {!loading && filteredRows.length === 0 && (
