@@ -93,12 +93,12 @@ export default function CalendarTab() {
 
   const staffName = (id) => staffList.find(u => u.id === id)?.name || id;
 
-  // Visibility scope: admins see everyone, staff only see their own tasks
+  // Visibility scope: admins see everyone, staff only see their own tasks. Latest first.
   const scopedTasks = useMemo(() => {
     let list = tasks;
     if (!isAdmin) list = list.filter(t => t.staff_id === user?.id);
     else if (staffFilter !== 'ALL') list = list.filter(t => t.staff_id === staffFilter);
-    return [...list].sort((a, b) => (a.date + (a.in_time || '')).localeCompare(b.date + (b.in_time || '')));
+    return [...list].sort((a, b) => (b.date + (b.in_time || '')).localeCompare(a.date + (a.in_time || '')));
   }, [tasks, isAdmin, staffFilter, user]);
 
   const myTasksByDate = useMemo(() => {
@@ -161,18 +161,19 @@ export default function CalendarTab() {
 
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>📅 Calendar</div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {isAdmin && (
-            <>
-              <button className="btn btn-primary btn-sm" onClick={() => { setEditTask(null); setShowAssign(true); }}>+ Assign Task</button>
-              <Link to="/calendar/leave" className="btn btn-outline btn-sm">📊 Leave Count</Link>
-            </>
-          )}
-          <button className="btn btn-outline btn-sm" onClick={() => setShowLeave(true)}>🏖️ Apply Leave</button>
-          <button className="btn btn-outline btn-sm" onClick={() => setShowLeaveList(true)}>🌴 Leave</button>
-        </div>
+        {isAdmin && (
+          <button className="btn btn-primary btn-sm" onClick={() => { setEditTask(null); setShowAssign(true); }}>+ Assign Task</button>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        <button className="btn btn-outline btn-sm" onClick={() => setShowLeave(true)}>🏖️ Apply Leave</button>
+        <button className="btn btn-outline btn-sm" onClick={() => setShowLeaveList(true)}>🌴 Leave</button>
+        {isAdmin && (
+          <Link to="/calendar/leave" className="btn btn-outline btn-sm">📊 Leave Count</Link>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
@@ -261,7 +262,7 @@ export default function CalendarTab() {
             <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
             <div style={{ fontSize: 13 }}>{isAdmin ? 'No scheduled tasks found. Try adjusting filters.' : 'No tasks assigned to you yet.'}</div>
           </div>
-        ) : Object.keys(listByDate).sort().map(date => (
+        ) : Object.keys(listByDate).sort().reverse().map(date => (
           <div key={date} style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent2)', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>{dayName(date)}, {shortDate(date)}</span>
