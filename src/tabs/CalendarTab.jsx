@@ -4,8 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase } from '../lib/supabaseClient';
 import {
-  addDays, addMonths, dayName, fmt24to12, getMonday, isoToDisplay,
-  monthLabel, SCHED_COLORS, SCHED_LABELS, shortDate, todayIso,
+  addDays, addMonths, dayName, fmt24to12, getMonday, isoToDisplay, isTaskMissed,
+  monthLabel, SCHED_COLORS, SCHED_LABELS, shortDate, todayIso, urgencyFor,
 } from '../lib/calendarDate';
 import TaskScheduleModal from '../components/TaskScheduleModal';
 import ViewTaskModal from '../components/ViewTaskModal';
@@ -15,8 +15,10 @@ import LeaveListModal from '../components/LeaveListModal';
 function TaskCard({ t, isAdmin, staffName, onView, onStart, onDone }) {
   const color = SCHED_COLORS[t.status] || SCHED_COLORS.scheduled;
   const label = SCHED_LABELS[t.status] || SCHED_LABELS.scheduled;
+  const urgency = urgencyFor(t);
+  const borderColor = urgency ? urgency.color : color;
   return (
-    <div className="card" style={{ marginBottom: 8, padding: '13px 14px', borderLeft: `4px solid ${color}`, cursor: 'pointer' }} onClick={() => onView(t)}>
+    <div className="card" style={{ marginBottom: 8, padding: '13px 14px', borderLeft: `4px solid ${borderColor}`, cursor: 'pointer' }} onClick={() => onView(t)}>
       <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--offwhite)', marginBottom: 4 }}>{t.task || 'Untitled Task'}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 6 }}>
         {t.sport && (
@@ -40,6 +42,9 @@ function TaskCard({ t, isAdmin, staffName, onView, onStart, onDone }) {
           </span>
         )}
         <span style={{ fontSize: 11, fontWeight: 700, color, background: `${color}22`, border: `1px solid ${color}44`, padding: '3px 8px', borderRadius: 6 }}>{label}</span>
+        {urgency && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: urgency.color, background: `${urgency.color}22`, border: `1px solid ${urgency.color}44`, padding: '3px 8px', borderRadius: 6 }}>{urgency.label}</span>
+        )}
       </div>
       {!isAdmin && (t.status === 'scheduled' || t.status === 'pending') && (
         <div style={{ marginTop: 10 }}>
@@ -145,6 +150,22 @@ export default function CalendarTab() {
     if (error) { alert('Delete failed: ' + error.message); return; }
     setTasks(prev => prev.filter(x => x.id !== t.id));
   };
+  const reportMissed = async (t, reason) => {
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('week_schedules')
+      .update({ missed_reason: reason, missed_reported_at: now, missed_reported_by: user?.id })
+      .eq('id', t.id);
+    if (error) { alert('Failed to send: ' + error.message); return; }
+    setTasks(prev => prev.map(x => x.id === t.id ? { ...x, missed_reason: reason, missed_reported_at: now, missed_reported_by: user?.id } : x));
+  };
+  const reviewMissed = async (t) => {
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('week_schedules')
+      .update({ reviewed_at: now, reviewed_by: user?.id })
+      .eq('id', t.id);
+    if (error) { alert('Failed: ' + error.message); return; }
+    setTasks(prev => prev.map(x => x.id === t.id ? { ...x, reviewed_at: now, reviewed_by: user?.id } : x));
+  };
 
   // ---- Month grid ----
   const monthGrid = useMemo(() => {
@@ -184,22 +205,24 @@ export default function CalendarTab() {
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        {isAdmin && (
-          <select className="form-select" style={{ flex: 1, minWidth: 140, fontSize: 12 }} value={staffFilter} onChange={e => setStaffFilter(e.target.value)}>
+      {isAdmin && (
+        <div style={{ marginBottom: 8 }}>
+          <select className="form-select" style={{ width: '100%', fontSize: 12 }} value={staffFilter} onChange={e => setStaffFilter(e.target.value)}>
             <option value="ALL">All Staff</option>
             {staffList.map(u => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
           </select>
-        )}
-        {view === 'list' && (
-          <>
-            <input type="date" className="form-input" style={{ flex: 1, minWidth: 110, fontSize: 12 }} value={listFrom} onChange={e => setListFrom(e.target.value)} />
-            <span style={{ fontSize: 11, color: 'var(--gray)' }}>to</span>
-            <input type="date" className="form-input" style={{ flex: 1, minWidth: 110, fontSize: 12 }} value={listTo} onChange={e => setListTo(e.target.value)} />
-            {(listFrom || listTo) && <button className="btn btn-outline btn-sm" onClick={() => { setListFrom(''); setListTo(''); }}>✕</button>}
-          </>
-        )}
-      </div>
+        </div>
+      )}
+      {view === 'list' && (
+        <div style={{ display: 'flex', gap: 5, marginBottom: 10, alignItems: 'center', flexWrap: 'nowrap' }}>
+          <input type="date" className="form-input" style={{ flex: 1, minWidth: 0, fontSize: 11, padding: '8px 6px' }} value={listFrom} onChange={e => setListFrom(e.target.value)} />
+          <span style={{ fontSize: 11, color: 'var(--gray)', flexShrink: 0 }}>–</span>
+          <input type="date" className="form-input" style={{ flex: 1, minWidth: 0, fontSize: 11, padding: '8px 6px' }} value={listTo} onChange={e => setListTo(e.target.value)} />
+          {(listFrom || listTo) && (
+            <button className="btn btn-outline btn-sm" style={{ flexShrink: 0, padding: '6px 9px' }} onClick={() => { setListFrom(''); setListTo(''); }}>✕</button>
+          )}
+        </div>
+      )}
 
       {loading && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 20 }}>Loading…</div>}
 
@@ -298,6 +321,8 @@ export default function CalendarTab() {
           onDelete={deleteTask}
           onStart={markStarted}
           onDone={markDone}
+          onReportMissed={reportMissed}
+          onReviewMissed={reviewMissed}
         />
       )}
 
