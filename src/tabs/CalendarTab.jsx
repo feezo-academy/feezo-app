@@ -75,6 +75,7 @@ export default function CalendarTab() {
 
   const [tasks, setTasks] = useState([]);
   const [staffList, setStaffList] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const [showAssign, setShowAssign] = useState(false);
@@ -91,12 +92,13 @@ export default function CalendarTab() {
       supabase.from('app_users').select('*').eq('academy_id', academyId),
     ]);
     setTasks(ts.data || []);
+    setAllUsers(us.data || []);
     setStaffList((us.data || []).filter(u => (u.role || '').split(',').map(r => r.trim()).includes('staff')));
     setLoading(false);
   };
   useEffect(() => { load(); }, [academyId]);
 
-  const staffName = (id) => staffList.find(u => u.id === id)?.name || id;
+  const staffName = (id) => allUsers.find(u => u.id === id)?.name || id;
 
   // Visibility scope: admins see everyone, staff only see their own tasks. Latest first.
   const scopedTasks = useMemo(() => {
