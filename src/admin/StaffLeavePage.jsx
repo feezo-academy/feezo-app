@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/auditLog';
 import { isoToDisplay } from '../lib/calendarDate';
+import PanelWindow from '../components/PanelWindow';
 
 const STATUS_COLOR = { pending: '#f59e0b', approved: '#22c55e', rejected: '#ef4444' };
 
@@ -31,6 +32,8 @@ export default function StaffLeavePage() {
   useEffect(() => { load(); }, [academyId]);
 
   const staffName = (id) => staffList.find(u => u.id === id)?.name || id;
+  const adminIds = useMemo(() => staffList.filter(u => (u.role || '').split(',').map(r => r.trim()).includes('admin')).map(u => u.id), [staffList]);
+  const isOwnRequest = (leave) => leave.staff_id === user?.id;
 
   const filtered = useMemo(() => {
     let list = isAdmin ? requests : requests.filter(l => l.staff_id === user?.id);
@@ -48,6 +51,7 @@ export default function StaffLeavePage() {
   }), [filtered]);
 
   const review = async (leave, status) => {
+    if (isOwnRequest(leave)) { alert('You cannot review your own leave request — another admin needs to review it.'); return; }
     const { error } = await supabase.from('leave_requests').update({
       status, reviewed_by: appUser?.name || user?.email, reviewed_at: new Date().toISOString(),
     }).eq('id', leave.id);
@@ -92,7 +96,8 @@ export default function StaffLeavePage() {
 
       {!loading && filtered.map(l => {
         const sc = STATUS_COLOR[l.status] || '#888';
-        const canReview = isAdmin && l.status === 'pending';
+        const canReview = isAdmin && l.status === 'pending' && !isOwnRequest(l);
+        const ownPending = isAdmin && l.status === 'pending' && isOwnRequest(l);
         return (
           <div key={l.id} className="card" style={{ padding: '12px 14px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, cursor: canReview ? 'pointer' : 'default' }}
             onClick={() => canReview && setReviewing(l)}>
@@ -102,6 +107,9 @@ export default function StaffLeavePage() {
               {l.reason && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{l.reason}</div>}
               {l.reviewed_by && (l.status === 'approved' || l.status === 'rejected') && (
                 <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{l.status === 'approved' ? '✅ Approved' : '❌ Rejected'} by {l.reviewed_by}</div>
+              )}
+              {ownPending && (
+                <div style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>⚠️ Your own request — another admin needs to review it</div>
               )}
             </div>
             {canReview
@@ -114,21 +122,30 @@ export default function StaffLeavePage() {
       })}
 
       {reviewing && (
-        <div className="modal-overlay active" onClick={e => e.target === e.currentTarget && setReviewing(null)}>
-          <div className="modal" style={{ maxWidth: 400 }}>
-            <div className="modal-title">
+        <PanelWindow onClose={() => setReviewing(null)}>
+          <div className="modal" style={{ width: '100%', maxWidth: 400, height: '100%', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
+            <div className="modal-title" style={{ padding: '16px 20px', flexShrink: 0, borderBottom: '1px solid var(--border)', margin: 0 }}>
               <span>📋 Leave Request</span>
               <button className="modal-close" onClick={() => setReviewing(null)}>×</button>
             </div>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{staffName(reviewing.staff_id) || reviewing.staff_name}</div>
-            <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>📆 {isoToDisplay(reviewing.date)}</div>
-            {reviewing.reason && <div style={{ fontSize: 13, color: 'var(--offwhite)', marginBottom: 14, background: 'var(--card2)', borderRadius: 8, padding: 10 }}>{reviewing.reason}</div>}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn" style={{ flex: 1, background: '#ef444422', color: '#f87171', border: '1px solid #ef444444' }} onClick={() => review(reviewing, 'rejected')}>❌ Reject</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => review(reviewing, 'approved')}>✅ Approve</button>
+            <div style={{ overflowY: 'auto', flex: 1, padding: '16px 20px', minHeight: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{staffName(reviewing.staff_id) || reviewing.staff_name}</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>📆 {isoToDisplay(reviewing.date)}</div>
+              {reviewing.reason && <div style={{ fontSize: 13, color: 'var(--offwhite)', marginBottom: 14, background: 'var(--card2)', borderRadius: 8, padding: 10 }}>{reviewing.reason}</div>}
+              {isOwnRequest(reviewing) && (
+                <div style={{ fontSize: 12, color: '#b45309', background: '#f59e0b18', border: '1px solid #f59e0b44', borderRadius: 8, padding: '9px 11px' }}>
+                  ⚠️ This is your own leave request — another admin needs to review it.
+                </div>
+              )}
             </div>
+            {!isOwnRequest(reviewing) && (
+              <div style={{ display: 'flex', gap: 8, padding: '14px 20px', flexShrink: 0, borderTop: '1px solid var(--border)' }}>
+                <button className="btn" style={{ flex: 1, background: '#ef444422', color: '#f87171', border: '1px solid #ef444444' }} onClick={() => review(reviewing, 'rejected')}>❌ Reject</button>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => review(reviewing, 'approved')}>✅ Approve</button>
+              </div>
+            )}
           </div>
-        </div>
+        </PanelWindow>
       )}
     </div>
   );
