@@ -15,7 +15,7 @@ function dateColor(date) {
   return 'var(--offwhite)';
 }
 
-export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staffList, onClose, onChanged }) {
+export default function LeaveListModal({ academyId, isAdmin, userId, reviewerName, tasks, staffList, onClose, onChanged }) {
   const [leaves, setLeaves] = useState([]);
   const [adminIds, setAdminIds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,10 +62,11 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
           logActivity({ academyId, actorId: userId, actorName: 'Admin', message: `Reassigned ${ids.length} task(s) from ${staffName(leave.staff_id)} to ${staffName(reassignToId)} on ${leave.date}` });
         }
       }
-      const { error } = await supabase.from('leave_requests').update({ status: 'approved', decided_at: new Date().toISOString() }).eq('id', leave.id);
+      const reviewedAt = new Date().toISOString();
+      const { error } = await supabase.from('leave_requests').update({ status: 'approved', reviewed_by: reviewerName, reviewed_at: reviewedAt }).eq('id', leave.id);
       if (error) throw error;
       logActivity({ academyId, actorId: userId, actorName: 'Admin', message: `Approved leave for ${leave.staff_name} on ${leave.date}` });
-      setLeaves(prev => prev.map(l => l.id === leave.id ? { ...l, status: 'approved' } : l));
+      setLeaves(prev => prev.map(l => l.id === leave.id ? { ...l, status: 'approved', reviewed_by: reviewerName, reviewed_at: reviewedAt } : l));
       setReassignFor(null);
       setReassignTo('');
       onChanged?.();
@@ -90,10 +91,11 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
     if (leave.staff_id === userId) { alert('You cannot reject your own leave request — another admin needs to review it.'); return; }
     setBusyId(leave.id);
     try {
-      const { error } = await supabase.from('leave_requests').update({ status: 'rejected', decided_at: new Date().toISOString() }).eq('id', leave.id);
+      const reviewedAt = new Date().toISOString();
+      const { error } = await supabase.from('leave_requests').update({ status: 'rejected', reviewed_by: reviewerName, reviewed_at: reviewedAt }).eq('id', leave.id);
       if (error) throw error;
       logActivity({ academyId, actorId: userId, actorName: 'Admin', message: `Rejected leave for ${leave.staff_name} on ${leave.date}` });
-      setLeaves(prev => prev.map(l => l.id === leave.id ? { ...l, status: 'rejected' } : l));
+      setLeaves(prev => prev.map(l => l.id === leave.id ? { ...l, status: 'rejected', reviewed_by: reviewerName, reviewed_at: reviewedAt } : l));
     } catch (err) {
       alert('Failed: ' + err.message);
     } finally {
@@ -119,6 +121,13 @@ export default function LeaveListModal({ academyId, isAdmin, userId, tasks, staf
               </div>
               <span style={{ fontSize: 10, fontWeight: 800, color: STATUS_COLOR[l.status], background: 'var(--card2)', borderRadius: 5, padding: '3px 7px', flexShrink: 0, textTransform: 'uppercase' }}>{l.status}</span>
             </div>
+
+            {l.status !== 'pending' && l.reviewed_by && (
+              <div style={{ fontSize: 10.5, color: 'var(--gray)', marginTop: 6 }}>
+                {l.status === 'approved' ? '✅' : '❌'} by <b style={{ color: 'var(--offwhite)' }}>{l.reviewed_by}</b>
+                {l.reviewed_at && ` · ${new Date(l.reviewed_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
+              </div>
+            )}
 
             {showActions && isAdmin && ownAdminRequest && (
               <div style={{ marginTop: 9, fontSize: 11, color: '#b45309', background: '#f59e0b18', border: '1px solid #f59e0b44', borderRadius: 8, padding: '7px 9px' }}>
