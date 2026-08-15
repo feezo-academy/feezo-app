@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { calcDuration, fmt24to12, fmtTime12, isoToDisplay, isTaskMissed, SCHED_COLORS, SCHED_LABELS, urgencyFor } from '../lib/calendarDate';
 import PanelWindow from './PanelWindow';
 
-export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdit, onDelete, onStart, onDone, onReportMissed, onReviewMissed }) {
+export default function ViewTaskModal({ task, isAdmin, userId, staffName, onClose, onEdit, onDelete, onStart, onDone, onReportMissed, onReviewMissed }) {
   const [reasonText, setReasonText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -12,6 +12,7 @@ export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdi
   const urgency = urgencyFor(task);
   const missed = isTaskMissed(task);
   const awaitingReview = !!task.missed_reason && !task.reviewed_at;
+  const ownTask = task.staff_id === userId;
 
   const submitReason = async () => {
     if (!reasonText.trim()) return;
@@ -96,8 +97,8 @@ export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdi
           Assigned by {staffName(task.created_by)} on {isoToDisplay((task.created_at || '').slice(0, 10))}
         </div>
 
-        {/* ---- Staff: report a missed in/out with a reason ---- */}
-        {!isAdmin && missed && !task.missed_reason && (
+        {/* ---- Report a missed in/out with a reason (staff or admin, on their own task) ---- */}
+        {ownTask && missed && !task.missed_reason && (
           <div style={{ marginTop: 12, padding: 12, background: '#ef444411', border: '1px solid #ef444444', borderRadius: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', marginBottom: 8 }}>
               ⚠️ You missed the {task.status === 'in_progress' ? 'check-out' : 'check-in'} time for this task.
@@ -127,13 +128,19 @@ export default function ViewTaskModal({ task, isAdmin, staffName, onClose, onEdi
           </div>
         )}
 
-        {/* ---- Admin: review and clear the warning ---- */}
-        {isAdmin && awaitingReview && (
+        {/* ---- Admin: review and clear the warning (not their own task) ---- */}
+        {isAdmin && awaitingReview && !ownTask && (
           <button
             className="btn"
             style={{ width: '100%', background: '#22c55e22', color: '#22c55e', border: '1px solid #22c55e44', marginTop: 10, fontSize: 13, padding: 11, fontWeight: 700 }}
             onClick={() => { onReviewMissed(task); onClose(); }}
           >✅ Mark Reviewed — Clear Warning</button>
+        )}
+
+        {isAdmin && awaitingReview && ownTask && (
+          <div style={{ marginTop: 10, fontSize: 11, color: '#b45309', background: '#f59e0b18', border: '1px solid #f59e0b44', borderRadius: 8, padding: '7px 9px' }}>
+            ⚠️ This is your own missed task — another admin needs to review it.
+          </div>
         )}
 
         {isAdmin && task.reviewed_at && (
