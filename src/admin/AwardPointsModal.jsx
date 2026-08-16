@@ -13,7 +13,14 @@ export default function AwardPointsModal({ row, academyId, userId, userName, pro
   });
   const [busy, setBusy] = useState(false);
 
-  const setVal = (challengeId, val) => setValues(prev => ({ ...prev, [challengeId]: val }));
+  const setVal = (challengeId, val, maxPoints) => {
+    if (val === '') { setValues(prev => ({ ...prev, [challengeId]: '' })); return; }
+    let num = Number(val);
+    if (Number.isNaN(num)) return;
+    if (num < 0) num = 0;
+    if (num > maxPoints) num = maxPoints;
+    setValues(prev => ({ ...prev, [challengeId]: String(num) }));
+  };
 
   const saveAll = async () => {
     setBusy(true);
@@ -70,7 +77,7 @@ export default function AwardPointsModal({ row, academyId, userId, userName, pro
                       className="form-input" style={{ width: 70, fontSize: 12, padding: '6px 8px' }}
                       placeholder="0"
                       value={values[c.id] ?? ''}
-                      onChange={e => setVal(c.id, e.target.value)}
+                      onChange={e => setVal(c.id, e.target.value, c.total_points)}
                     />
                   </div>
                 ))}
