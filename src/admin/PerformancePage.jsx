@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import ProgramManagerModal from './ProgramManagerModal';
 import AwardPointsModal from './AwardPointsModal';
 import StudentChartsModal from './StudentChartsModal';
+import StudentHistoryModal from './StudentHistoryModal';
 
 const PRESENT_STATUS = 'P'; // adjust here if attendance uses a different code for "present"
 
@@ -33,6 +34,7 @@ export default function PerformancePage() {
   const [showProgramManager, setShowProgramManager] = useState(false);
   const [awardFor, setAwardFor] = useState(null); // row currently awarding points for
   const [chartsFor, setChartsFor] = useState(null); // row currently viewing charts for
+  const [historyFor, setHistoryFor] = useState(null); // row currently viewing history for
 
   // default: all sports/batches selected once loaded
   useEffect(() => {
@@ -122,27 +124,39 @@ export default function PerformancePage() {
     return out;
   }, [points, challenges]);
 
-  // build one row per student enrollment
+  // build one row per student+sport — batches within the same sport are merged
+  // into a single entry, but a student doing 2 different sports gets 2 rows
   const rows = useMemo(() => {
-    const out = [];
+    const bySportStudent = new Map();
     visibleStudents.forEach(s => {
       (s.enrollments || []).forEach(en => {
-        const attKey = `${s.id}|${en.sport}`;
-        const attPct = attendancePct[attKey] ?? 0;
-        const totalPts = totalPointsBySport[en.sport] || 0;
-        const earnedPts = earnedPointsByStudentSport[attKey] || 0;
-        const coursePct = totalPts ? (earnedPts / totalPts) * 100 : 0;
-        const finalScore = attPct * (attendanceWeight / 100) + coursePct * (courseWeight / 100);
-        out.push({
-          key: `${s.id}::${en.batch}`,
-          student: s,
-          sport: en.sport,
-          batchLabel: en.batchLabel,
-          batchKey: en.batch,
-          attendancePct: attPct,
-          coursePct,
-          finalScore,
-        });
+        const key = `${s.id}|${en.sport}`;
+        if (!bySportStudent.has(key)) {
+          bySportStudent.set(key, { student: s, sport: en.sport, batchLabels: [], batchKeys: [] });
+        }
+        const entry = bySportStudent.get(key);
+        if (!entry.batchKeys.includes(en.batch)) {
+          entry.batchKeys.push(en.batch);
+          entry.batchLabels.push(en.batchLabel);
+        }
+      });
+    });
+    const out = [];
+    bySportStudent.forEach((entry, key) => {
+      const attPct = attendancePct[key] ?? 0;
+      const totalPts = totalPointsBySport[entry.sport] || 0;
+      const earnedPts = earnedPointsByStudentSport[key] || 0;
+      const coursePct = totalPts ? (earnedPts / totalPts) * 100 : 0;
+      const finalScore = attPct * (attendanceWeight / 100) + coursePct * (courseWeight / 100);
+      out.push({
+        key,
+        student: entry.student,
+        sport: entry.sport,
+        batchLabel: entry.batchLabels.join(', '),
+        batchKey: entry.batchKeys.join(','),
+        attendancePct: attPct,
+        coursePct,
+        finalScore,
       });
     });
     return out;
@@ -170,6 +184,34 @@ export default function PerformancePage() {
   };
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
+      {chartsFor ? (
+        <StudentChartsModal
+          row={chartsFor}
+          academyId={academyId}
+          userId={user?.id}
+          userName={appUser?.name || user?.email}
+          canEdit={isAdmin}
+          totalPoints={totalPointsBySport[chartsFor.sport] || 0}
+          earnedPoints={earnedPointsByStudentSport[`${chartsFor.student.id}|${chartsFor.sport}`] || 0}
+          pointsRecords={points.filter(p => p.student_id === chartsFor.student.id)}
+          challenges={challenges.filter(c => c.sport === chartsFor.sport)}
+          attendanceRecords={attendance.filter(a => a.student_id === chartsFor.student.id && a.sport === chartsFor.sport)}
+          onClose={() => setChartsFor(null)}
+        />
+      ) : historyFor ? (
+        <StudentHistoryModal
+          row={historyFor}
+          academyId={academyId}
+          userId={user?.id}
+          userName={appUser?.name || user?.email}
+          canEdit={isAdmin}
+          pointsRecords={points.filter(p => p.student_id === historyFor.student.id)}
+          challenges={challenges.filter(c => c.sport === historyFor.sport)}
+          onClose={() => setHistoryFor(null)}
+          onAddPoints={() => setAwardFor(historyFor)}
+        />
+      ) : (
+      <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>🏆 Performance Leaderboard</div>
         {isAdmin && (
@@ -287,7 +329,7 @@ export default function PerformancePage() {
 
       {!loading && filteredRows.map((r, i) => (
         <div key={r.key} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
-          onClick={() => setAwardFor(r)}>
+          onClick={() => setHistoryFor(r)}>
           <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
             {i + 1}
           </div>
@@ -320,6 +362,9 @@ export default function PerformancePage() {
         <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 30 }}>No students match the current filters.</div>
       )}
 
+      </>
+      )}
+
       {showProgramManager && (
         <ProgramManagerModal
           academyId={academyId}
@@ -344,22 +389,6 @@ export default function PerformancePage() {
           existingPoints={points.filter(p => p.student_id === awardFor.student.id)}
           onClose={() => setAwardFor(null)}
           onChanged={load}
-        />
-      )}
-
-      {chartsFor && (
-        <StudentChartsModal
-          row={chartsFor}
-          academyId={academyId}
-          userId={user?.id}
-          userName={appUser?.name || user?.email}
-          canEdit={isAdmin}
-          totalPoints={totalPointsBySport[chartsFor.sport] || 0}
-          earnedPoints={earnedPointsByStudentSport[`${chartsFor.student.id}|${chartsFor.sport}`] || 0}
-          pointsRecords={points.filter(p => p.student_id === chartsFor.student.id)}
-          challenges={challenges.filter(c => c.sport === chartsFor.sport)}
-          attendanceRecords={attendance.filter(a => a.student_id === chartsFor.student.id && a.sport === chartsFor.sport)}
-          onClose={() => setChartsFor(null)}
         />
       )}
     </div>
