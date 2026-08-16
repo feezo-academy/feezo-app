@@ -7,6 +7,7 @@ const MAIN_ITEMS = [
   { to: '/attendance', label: 'Attendance', icon: '📝' },
   { to: '/fees', label: 'Fees', icon: '💳' },
   { to: '/enquiry', label: 'Enquiry', icon: '💬' },
+  { to: '/admin/performance', label: 'Performance', icon: '🏆' },
   { to: '/calendar', label: 'Calendar', icon: '📅' },
   { to: '/profile', label: 'Profile', icon: '👤' },
 ];
@@ -15,7 +16,6 @@ const ADMIN_ITEMS = [
   { to: '/admin/sports-batches', label: 'Sports & Batches', icon: '🥋' },
   { to: '/admin/users', label: 'Staff Users', icon: '👥' },
   { to: '/admin/courses', label: 'Courses', icon: '📚' },
-  { to: '/admin/performance', label: 'Performance', icon: '🏆' },
   { to: '/admin/activity', label: 'Activity Log', icon: '📋' },
   { to: '/admin/leave-count', label: 'Leave Count', icon: '🌴' },
   { to: '/calendar/leave', label: 'Leave Requests', icon: '📊' },

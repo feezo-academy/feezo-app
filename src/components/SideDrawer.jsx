@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { to: '/fees', icon: '💰', label: 'Fees' },
   { to: '/enquiry', icon: '💬', label: 'Enquiry' },
   { to: '/admin/class-log', icon: '📋', label: 'Activity Log' },
-  { to: '/admin/performance', icon: '🏆', label: 'Performance', adminOnly: true },
+  { to: '/admin/performance', icon: '🏆', label: 'Performance' },
   { to: '/calendar', icon: '📆', label: 'Calendar' },
   { to: '/leave-requests', icon: '🌴', label: 'Leave Request' },
   { to: '/profile', icon: '👤', label: 'Profile' },
