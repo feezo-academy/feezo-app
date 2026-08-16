@@ -89,17 +89,35 @@ export default function PerformancePage() {
     saveCourseWeight(Number(programInput));
   };
 
-  // attendance % per student+sport
+  // attendance % per student+sport — denominator is every distinct session
+  // date recorded for that sport (across all students) in the date range, not
+  // just this student's own rows. So a day another student was marked but
+  // this student has no row for at all correctly counts against them as
+  // absent, instead of being silently excluded and inflating their %.
   const attendancePct = useMemo(() => {
-    const buckets = {};
+    const sessionDatesBySport = {};
+    attendance.forEach(a => {
+      sessionDatesBySport[a.sport] = sessionDatesBySport[a.sport] || new Set();
+      sessionDatesBySport[a.sport].add(a.date);
+    });
+
+    const presentCounts = {};
+    const studentSportKeys = new Set();
     attendance.forEach(a => {
       const key = `${a.student_id}|${a.sport}`;
-      buckets[key] = buckets[key] || { present: 0, total: 0 };
-      buckets[key].total += 1;
-      if ((a.status || '').toUpperCase() === PRESENT_STATUS) buckets[key].present += 1;
+      studentSportKeys.add(key);
+      if ((a.status || '').toUpperCase() === PRESENT_STATUS) {
+        presentCounts[key] = (presentCounts[key] || 0) + 1;
+      }
     });
+
     const out = {};
-    Object.entries(buckets).forEach(([k, v]) => { out[k] = v.total ? (v.present / v.total) * 100 : 0; });
+    studentSportKeys.forEach(key => {
+      const sport = key.split('|')[1];
+      const totalDays = sessionDatesBySport[sport]?.size || 0;
+      const present = presentCounts[key] || 0;
+      out[key] = totalDays ? (present / totalDays) * 100 : 0;
+    });
     return out;
   }, [attendance]);
 

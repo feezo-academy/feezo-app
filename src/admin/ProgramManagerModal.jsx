@@ -2,9 +2,17 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import PanelWindow from '../components/PanelWindow';
 
+const FREQUENCIES = [
+  { key: 'daily', label: 'Daily' },
+  { key: 'weekly', label: 'Weekly' },
+  { key: 'monthly', label: 'Monthly' },
+];
+
 export default function ProgramManagerModal({ academyId, userId, userName, sports, programs, challenges, isAdmin, onClose, onChanged }) {
+  const [newFormOpen, setNewFormOpen] = useState(false);
   const [newProgramName, setNewProgramName] = useState('');
   const [newProgramSport, setNewProgramSport] = useState(sports[0]?.name || '');
+  const [newProgramFrequency, setNewProgramFrequency] = useState('weekly');
   const [busy, setBusy] = useState(false);
   const [openProgram, setOpenProgram] = useState(null); // program currently drilled into
 
@@ -17,11 +25,13 @@ export default function ProgramManagerModal({ academyId, userId, userName, sport
     setBusy(true);
     const { error } = await supabase.from('programs').insert({
       academy_id: academyId, sport: newProgramSport, name: newProgramName.trim(),
+      frequency: newProgramFrequency,
       created_by_id: userId, created_by_name: userName,
     });
     setBusy(false);
     if (error) { alert('Failed: ' + error.message); return; }
     setNewProgramName('');
+    setNewFormOpen(false);
     onChanged?.();
   };
 
@@ -44,15 +54,38 @@ export default function ProgramManagerModal({ academyId, userId, userName, sport
         </div>
 
         <div style={{ overflowY: 'auto', flex: 1, padding: '0 2px' }}>
-          {/* new program */}
+          {/* new program — collapsed by default, tap header to expand */}
           <div className="card" style={{ padding: 12, marginBottom: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>+ New Program</div>
-            <select className="form-select" style={{ width: '100%', fontSize: 12, marginBottom: 6 }} value={newProgramSport} onChange={e => setNewProgramSport(e.target.value)}>
-              {sports.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-            </select>
-            <input className="form-input" style={{ width: '100%', fontSize: 12, marginBottom: 8 }} placeholder="Program name (e.g. Level 1 Basics)"
-              value={newProgramName} onChange={e => setNewProgramName(e.target.value)} />
-            <button className="btn btn-primary" style={{ width: '100%', fontSize: 12 }} disabled={busy || !newProgramName.trim()} onClick={addProgram}>Add Program</button>
+            <div
+              onClick={() => setNewFormOpen(o => !o)}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 700, marginBottom: newFormOpen ? 8 : 0 }}
+            >
+              <span>+ New Program</span>
+              <span style={{ color: 'var(--gray)', transform: newFormOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>›</span>
+            </div>
+            {newFormOpen && (
+              <>
+                <select className="form-select" style={{ width: '100%', fontSize: 12, marginBottom: 6 }} value={newProgramSport} onChange={e => setNewProgramSport(e.target.value)}>
+                  {sports.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                </select>
+                <input className="form-input" style={{ width: '100%', fontSize: 12, marginBottom: 8 }} placeholder="Program name (e.g. Level 1 Basics)"
+                  value={newProgramName} onChange={e => setNewProgramName(e.target.value)} />
+                <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 5 }}>Points entry frequency</div>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                  {FREQUENCIES.map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setNewProgramFrequency(f.key)}
+                      className={`btn btn-sm ${newProgramFrequency === f.key ? 'btn-primary' : 'btn-outline'}`}
+                      style={{ flex: 1, fontSize: 11 }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+                <button className="btn btn-primary" style={{ width: '100%', fontSize: 12 }} disabled={busy || !newProgramName.trim()} onClick={addProgram}>Add Program</button>
+              </>
+            )}
           </div>
 
           {/* program summary rows — name + challenge count only; tap to drill in */}
@@ -67,7 +100,9 @@ export default function ProgramManagerModal({ academyId, userId, userName, sport
               >
                 <div>
                   <div style={{ fontWeight: 800, fontSize: 13 }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>{p.sport} · {count} challenge{count !== 1 ? 's' : ''}</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>
+                    {p.sport} · {count} challenge{count !== 1 ? 's' : ''}{p.frequency ? ` · ${p.frequency}` : ''}
+                  </div>
                 </div>
                 <span style={{ fontSize: 18, color: 'var(--gray)' }}>›</span>
               </div>
@@ -139,13 +174,13 @@ function ProgramDetailPanel({ program, challenges, academyId, userId, onClose, o
     <PanelWindow onClose={onClose}>
       <div className="modal" style={{ width: '100%', maxWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 0, margin: 0 }}>
         <div className="modal-title">
-          <span>← {program.name}</span>
+          <span>{program.name}</span>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
         <div style={{ overflowY: 'auto', flex: 1, padding: '0 2px' }}>
           <div className="card" style={{ padding: 12, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 12, color: 'var(--gray)' }}>{program.sport}</div>
+            <div style={{ fontSize: 12, color: 'var(--gray)' }}>{program.sport}{program.frequency ? ` · ${program.frequency}` : ''}</div>
             <button className="btn btn-sm" style={{ background: '#ef444422', color: '#ef4444', border: '1px solid #ef444444', fontSize: 11 }} onClick={onDeleteProgram}>
               🗑 Delete Program
             </button>
