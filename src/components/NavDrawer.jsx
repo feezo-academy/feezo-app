@@ -1,24 +1,17 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const MAIN_ITEMS = [
+const NAV_ITEMS = [
   { to: '/home', label: 'Home', icon: '🏠' },
   { to: '/students', label: 'Students', icon: '🎓' },
   { to: '/attendance', label: 'Attendance', icon: '📝' },
   { to: '/fees', label: 'Fees', icon: '💳' },
   { to: '/enquiry', label: 'Enquiry', icon: '💬' },
+  { to: '/admin/activity', label: 'Activity Log', icon: '📋' },
   { to: '/admin/performance', label: 'Performance', icon: '🏆' },
   { to: '/calendar', label: 'Calendar', icon: '📅' },
+  { to: '/calendar/leave', label: 'Leave Request', icon: '📊' },
   { to: '/profile', label: 'Profile', icon: '👤' },
-];
-
-const ADMIN_ITEMS = [
-  { to: '/admin/sports-batches', label: 'Sports & Batches', icon: '🥋' },
-  { to: '/admin/users', label: 'Staff Users', icon: '👥' },
-  { to: '/admin/courses', label: 'Courses', icon: '📚' },
-  { to: '/admin/activity', label: 'Activity Log', icon: '📋' },
-  { to: '/admin/leave-count', label: 'Leave Count', icon: '🌴' },
-  { to: '/calendar/leave', label: 'Leave Requests', icon: '📊' },
 ];
 
 export default function NavDrawer({ open, onClose }) {
@@ -45,7 +38,7 @@ export default function NavDrawer({ open, onClose }) {
         </div>
 
         <div className="drawer-nav">
-          {MAIN_ITEMS.map(item => (
+          {NAV_ITEMS.map(item => (
             <NavLink key={item.to} to={item.to} onClick={onClose}
               className={({ isActive }) => 'drawer-item' + (isActive ? ' active' : '')}>
               <span className="drawer-icon">{item.icon}</span>
@@ -53,24 +46,14 @@ export default function NavDrawer({ open, onClose }) {
             </NavLink>
           ))}
 
-          {isAdmin && (
-            <>
-              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--gray)', letterSpacing: 0.5, textTransform: 'uppercase', padding: '14px 14px 6px' }}>
-                Admin
-              </div>
-              {ADMIN_ITEMS.map(item => (
-                <NavLink key={item.to} to={item.to} onClick={onClose}
-                  className={({ isActive }) => 'drawer-item' + (isActive ? ' active' : '')}>
-                  <span className="drawer-icon">{item.icon}</span>
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </>
-          )}
-        </div>
-
-        <div className="drawer-footer">
-          <button className="drawer-logout" onClick={() => { onClose(); logout(); }}>Sign Out</button>
+          <button
+            onClick={() => { onClose(); logout(); }}
+            className="drawer-item"
+            style={{ color: '#f87171', background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer' }}
+          >
+            <span className="drawer-icon">🚪</span>
+            <span>Sign Out</span>
+          </button>
         </div>
       </div>
     </>
