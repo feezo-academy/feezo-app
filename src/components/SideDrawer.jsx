@@ -9,7 +9,8 @@ const NAV_ITEMS = [
   { to: '/enquiry', icon: '💬', label: 'Enquiry' },
   { to: '/admin/class-log', icon: '📋', label: 'Activity Log' },
   { to: '/admin/performance', icon: '🏆', label: 'Performance', adminOnly: true },
-  { to: '/admin/schedules', icon: '📅', label: 'Schedules', adminOnly: true },
+  { to: '/calendar', icon: '📆', label: 'Calendar' },
+  { to: '/leave-requests', icon: '🌴', label: 'Leave Request' },
   { to: '/profile', icon: '👤', label: 'Profile' },
 ];
 
@@ -101,15 +102,21 @@ export default function SideDrawer({ open, onClose, academyName }) {
               <span>{item.label}</span>
             </NavLink>
           ))}
-        </nav>
 
-        {/* Logout */}
-        <div style={{ padding: 10, borderTop: '1px solid var(--border)' }}>
+          {/* Sign out — regular row, styled like the others but in red */}
           <button
             onClick={handleLogout}
-            style={{ width: '100%', padding: 11, background: 'none', border: '1px solid var(--border)', borderRadius: 10, color: '#f87171', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-          >🚪 Logout</button>
-        </div>
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+              borderRadius: 10, border: '1px solid transparent', background: 'none',
+              color: '#f87171', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              width: '100%', textAlign: 'left',
+            }}
+          >
+            <span>🚪</span>
+            <span>Sign Out</span>
+          </button>
+        </nav>
       </div>
     </>
   );
