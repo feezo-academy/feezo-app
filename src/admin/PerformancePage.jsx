@@ -373,6 +373,7 @@ export default function PerformancePage() {
           sports={visibleSports}
           programs={programs}
           challenges={challenges}
+          isAdmin={isAdmin}
           onClose={() => setShowProgramManager(false)}
           onChanged={load}
         />
