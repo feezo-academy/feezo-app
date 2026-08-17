@@ -218,6 +218,7 @@ export default function PerformancePage() {
           earnedPoints={earnedPointsByStudentSport[`${chartsFor.student.id}|${chartsFor.sport}`] || 0}
           pointsRecords={points.filter(p => p.student_id === chartsFor.student.id)}
           challenges={challenges.filter(c => c.sport === chartsFor.sport)}
+          programs={programs.filter(p => p.sport === chartsFor.sport)}
           attendanceRecords={attendance.filter(a => a.student_id === chartsFor.student.id && a.sport === chartsFor.sport)}
           onClose={() => setChartsFor(null)}
         />
