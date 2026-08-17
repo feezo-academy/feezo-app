@@ -219,14 +219,11 @@ export default function PerformancePage() {
       ) : historyFor ? (
         <StudentHistoryModal
           row={historyFor}
-          academyId={academyId}
-          userId={user?.id}
-          userName={appUser?.name || user?.email}
-          canEdit={isAdmin}
+          programs={programs.filter(p => p.sport === historyFor.sport)}
           pointsRecords={points.filter(p => p.student_id === historyFor.student.id)}
           challenges={challenges.filter(c => c.sport === historyFor.sport)}
           onClose={() => setHistoryFor(null)}
-          onAddPoints={() => setAwardFor(historyFor)}
+          onAddPoints={(programId) => setAwardFor({ ...historyFor, programFilter: programId })}
         />
       ) : (
       <>
@@ -406,6 +403,7 @@ export default function PerformancePage() {
           programs={programs.filter(p => p.sport === awardFor.sport)}
           challenges={challenges.filter(c => c.sport === awardFor.sport)}
           existingPoints={points.filter(p => p.student_id === awardFor.student.id)}
+          programFilter={awardFor.programFilter}
           onClose={() => setAwardFor(null)}
           onChanged={load}
         />

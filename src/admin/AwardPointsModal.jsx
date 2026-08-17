@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import PanelWindow from '../components/PanelWindow';
 
-export default function AwardPointsModal({ row, academyId, userId, userName, programs, challenges, existingPoints, onClose, onChanged }) {
+export default function AwardPointsModal({ row, academyId, userId, userName, programs, challenges, existingPoints, programFilter, onClose, onChanged }) {
+  const visiblePrograms = programFilter ? programs.filter(p => p.id === programFilter) : programs;
+  const visibleChallenges = programFilter ? challenges.filter(c => c.program_id === programFilter) : challenges;
+
   const [values, setValues] = useState(() => {
     const map = {};
-    challenges.forEach(c => {
+    visibleChallenges.forEach(c => {
       const existing = existingPoints.find(p => p.challenge_id === c.id);
       map[c.id] = existing ? String(existing.points_awarded) : '';
     });
@@ -25,7 +28,7 @@ export default function AwardPointsModal({ row, academyId, userId, userName, pro
   const saveAll = async () => {
     setBusy(true);
     try {
-      const rowsToUpsert = challenges
+      const rowsToUpsert = visibleChallenges
         .filter(c => values[c.id] !== '' && values[c.id] != null)
         .map(c => ({
           academy_id: academyId,
@@ -51,7 +54,7 @@ export default function AwardPointsModal({ row, academyId, userId, userName, pro
 
   return (
     <PanelWindow onClose={onClose}>
-      <div className="modal" style={{ width: '100%', maxWidth: 420, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div className="modal" style={{ width: '100%', maxWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 0, margin: 0 }}>
         <div className="modal-title">
           <span>🏆 Award Points</span>
           <button className="modal-close" onClick={onClose}>×</button>
@@ -63,8 +66,8 @@ export default function AwardPointsModal({ row, academyId, userId, userName, pro
         </div>
 
         <div style={{ overflowY: 'auto', flex: 1 }}>
-          {programs.map(p => {
-            const progChallenges = challenges.filter(c => c.program_id === p.id);
+          {visiblePrograms.map(p => {
+            const progChallenges = visibleChallenges.filter(c => c.program_id === p.id);
             if (progChallenges.length === 0) return null;
             return (
               <div key={p.id} style={{ marginBottom: 14 }}>
@@ -84,7 +87,7 @@ export default function AwardPointsModal({ row, academyId, userId, userName, pro
               </div>
             );
           })}
-          {challenges.length === 0 && (
+          {visibleChallenges.length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 20, fontSize: 12 }}>
               No programs/challenges set up for {row.sport} yet.
             </div>

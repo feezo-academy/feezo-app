@@ -1,84 +1,54 @@
-import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
-
-const FREQUENCIES = [
-  { key: 'daily', label: 'Daily', days: 1 },
-  { key: 'weekly', label: 'Weekly', days: 7 },
-  { key: 'monthly', label: 'Monthly', days: 30 },
-];
+import { useMemo, useState } from 'react';
+import { isDue, getDueDate } from '../lib/scheduleUtils';
 
 export default function StudentHistoryModal({
-  row, academyId, userId, userName, canEdit,
-  pointsRecords, challenges, onClose, onAddPoints,
+  row, programs, challenges, pointsRecords, onClose, onAddPoints,
 }) {
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [schedule, setSchedule] = useState(null);
-  const [loadingSchedule, setLoadingSchedule] = useState(false);
-  const [pickedFrequency, setPickedFrequency] = useState('weekly');
-  const [saving, setSaving] = useState(false);
+  const [expandedProgram, setExpandedProgram] = useState(null); // program id whose history list is open
 
-  // ---------- last points entry ----------
   const challengeById = useMemo(() => {
     const m = {};
     challenges.forEach(c => { m[c.id] = c; });
     return m;
   }, [challenges]);
 
-  const lastEntry = useMemo(() => {
-    const list = pointsRecords
+  // points, mapped with challenge + program info, newest first
+  const pointsList = useMemo(() => {
+    return pointsRecords
       .filter(p => challengeById[p.challenge_id])
       .map(p => ({
+        id: p.id,
+        challengeId: p.challenge_id,
+        programId: challengeById[p.challenge_id]?.program_id,
         challengeName: challengeById[p.challenge_id]?.name || 'Challenge',
         points: Number(p.points_awarded || 0),
         date: p.awarded_at || p.created_at,
+        by: p.awarded_by_name || 'Unknown',
       }))
       .sort((a, b) => new Date(b.date) - new Date(a.date));
-    return list[0] || null;
   }, [pointsRecords, challengeById]);
 
-  // ---------- schedule ----------
-  const loadSchedule = async () => {
-    if (!academyId || !row?.student?.id) return;
-    setLoadingSchedule(true);
-    const { data, error } = await supabase
-      .from('student_schedules')
-      .select('*')
-      .eq('academy_id', academyId)
-      .eq('student_id', row.student.id)
-      .eq('sport', row.sport)
-      .maybeSingle();
-    if (!error) setSchedule(data || null);
-    setLoadingSchedule(false);
-  };
-
-  const openSchedule = () => {
-    setShowSchedule(true);
-    loadSchedule();
-  };
-
-  const saveSchedule = async () => {
-    setSaving(true);
-    const freq = FREQUENCIES.find(f => f.key === pickedFrequency);
-    const next = new Date();
-    next.setDate(next.getDate() + freq.days);
-    const { error } = await supabase.from('student_schedules').upsert({
-      academy_id: academyId,
-      student_id: row.student.id,
-      sport: row.sport,
-      frequency: pickedFrequency,
-      next_due_date: next.toISOString().slice(0, 10),
-      created_by_id: userId,
-      created_by_name: userName,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'academy_id,student_id,sport' });
-    setSaving(false);
-    if (error) { alert('Failed to save schedule: ' + error.message); return; }
-    loadSchedule();
-  };
+  // per-program: challenge count, last entry, due state
+  const programCards = useMemo(() => {
+    return programs.map(p => {
+      const progChallengeIds = new Set(challenges.filter(c => c.program_id === p.id).map(c => c.id));
+      const progPoints = pointsList.filter(pt => progChallengeIds.has(pt.challengeId));
+      const lastEntry = progPoints[0] || null;
+      const due = isDue(p, lastEntry?.date);
+      const dueDate = getDueDate(p, lastEntry?.date);
+      return {
+        program: p,
+        challengeCount: progChallengeIds.size,
+        lastEntry,
+        history: progPoints,
+        due,
+        dueDate,
+      };
+    }).filter(pc => pc.challengeCount > 0);
+  }, [programs, challenges, pointsList]);
 
   return (
-    // Rendered in-flow as page content, same pattern as the charts page —
-    // keeps a single scroll container with the rest of the app.
+    // Rendered in-flow as page content, same pattern as the charts page.
     <div style={{ maxWidth: 560, margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: 'var(--gray)', cursor: 'pointer', padding: 4 }}>←</button>
@@ -88,85 +58,84 @@ export default function StudentHistoryModal({
         </div>
       </div>
 
-      {/* ---------- last entry ---------- */}
-      <div className="card" style={{ padding: 16, borderRadius: 14, marginBottom: 12 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', marginBottom: 8 }}>LAST ENTRY</div>
-        {lastEntry ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{lastEntry.challengeName}</div>
-              <div style={{ fontSize: 11, color: 'var(--gray)' }}>{(lastEntry.date || '').slice(0, 10)}</div>
-            </div>
-            <div style={{ fontWeight: 800, color: 'var(--accent2)', fontSize: 18 }}>+{lastEntry.points}</div>
-          </div>
-        ) : (
-          <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 10 }}>No points given yet.</div>
-        )}
-      </div>
-
-      {/* ---------- actions ---------- */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={openSchedule}>
-          🗓️ New Entry
-        </button>
-        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={onAddPoints}>
-          ➕ Add Points
-        </button>
-      </div>
-
-      {/* ---------- schedule panel ---------- */}
-      {showSchedule && (
-        <div className="card" style={{ padding: 16, borderRadius: 14 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', marginBottom: 8 }}>SCHEDULE</div>
-
-          {loadingSchedule && <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 10 }}>Loading…</div>}
-
-          {!loadingSchedule && schedule && (
-            <div>
-              <div style={{ fontSize: 13, marginBottom: 4 }}>
-                Assigned: <b style={{ textTransform: 'capitalize' }}>{schedule.frequency}</b>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 10 }}>
-                Next entry due: {schedule.next_due_date}
-              </div>
-              {canEdit && (
-                <button className="btn btn-outline btn-sm" onClick={() => setSchedule(null)}>
-                  Change frequency
-                </button>
-              )}
-            </div>
-          )}
-
-          {!loadingSchedule && !schedule && (
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 10 }}>
-                No schedule set for this student's {row.sport} entries yet.
-              </div>
-              {canEdit ? (
-                <>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                    {FREQUENCIES.map(f => (
-                      <button
-                        key={f.key}
-                        onClick={() => setPickedFrequency(f.key)}
-                        className={`btn btn-sm ${pickedFrequency === f.key ? 'btn-primary' : 'btn-outline'}`}
-                        style={{ flex: 1, fontSize: 12 }}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
-                  <button className="btn btn-primary btn-sm" onClick={saveSchedule} disabled={saving} style={{ width: '100%' }}>
-                    {saving ? 'Saving…' : 'Save Schedule'}
-                  </button>
-                </>
-              ) : (
-                <div style={{ fontSize: 12, color: 'var(--gray)' }}>Ask an admin/staff to set up a schedule.</div>
-              )}
-            </div>
-          )}
+      {programCards.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 24 }}>
+          No programs set up for {row.sport} yet.
         </div>
       )}
+
+      {programCards.map(pc => {
+        const isOpen = expandedProgram === pc.program.id;
+        return (
+          <div key={pc.program.id} className="card" style={{ padding: 14, borderRadius: 14, marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>{pc.program.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)', textTransform: 'capitalize' }}>{pc.program.frequency || 'weekly'} entry</div>
+              </div>
+              <button
+                onClick={() => pc.due && onAddPoints(pc.program.id)}
+                disabled={!pc.due}
+                className="btn btn-sm"
+                style={{
+                  background: pc.due ? 'var(--accent2)' : 'var(--card2)',
+                  color: pc.due ? '#fff' : 'var(--gray)',
+                  border: 'none', fontSize: 11, fontWeight: 700,
+                  opacity: pc.due ? 1 : 0.5,
+                  cursor: pc.due ? 'pointer' : 'not-allowed',
+                }}
+              >
+                ➕ Add Points
+              </button>
+            </div>
+
+            {/* last entry */}
+            {pc.lastEntry ? (
+              <div
+                onClick={() => setExpandedProgram(isOpen ? null : pc.program.id)}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--border)', cursor: 'pointer' }}
+              >
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{pc.lastEntry.challengeName}</div>
+                  <div style={{ fontSize: 10, color: 'var(--gray)' }}>
+                    {(pc.lastEntry.date || '').slice(0, 10)} · by {pc.lastEntry.by}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <b style={{ color: 'var(--accent2)' }}>+{pc.lastEntry.points}</b>
+                  <span style={{ fontSize: 12, color: 'var(--gray)', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>›</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: 'var(--gray)', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                No entries yet — due now.
+              </div>
+            )}
+
+            {!pc.due && (
+              <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 2 }}>
+                Next entry opens {pc.dueDate.toISOString().slice(0, 10)}
+              </div>
+            )}
+
+            {/* history list — tap last entry to expand */}
+            {isOpen && pc.history.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', marginBottom: 6 }}>PREVIOUS ENTRIES</div>
+                {pc.history.map(h => (
+                  <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 11, borderTop: '1px solid var(--border)' }}>
+                    <span>{h.challengeName} <span style={{ color: 'var(--gray)' }}>· by {h.by}</span></span>
+                    <span style={{ display: 'flex', gap: 8 }}>
+                      <span style={{ color: 'var(--gray)' }}>{(h.date || '').slice(0, 10)}</span>
+                      <b style={{ color: 'var(--accent2)' }}>+{h.points}</b>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
