@@ -126,19 +126,19 @@ export default function StudentChartsModal({
       .sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [pointsRecords, challengeById]);
 
-  // entries (individual awards, all programs mixed) vs by-program (pick one program, see its own award history/trend)
+  // entries (individual awards, all programs mixed) vs by-program (pick "All Programs" or
+  // a single program to see its own award history/trend)
   const [pointsView, setPointsView] = useState('entries'); // 'entries' | 'cumulative'
   const [showProgramTrend, setShowProgramTrend] = useState(true);
-  const [selectedProgramId, setSelectedProgramId] = useState(null);
+  const [selectedProgramId, setSelectedProgramId] = useState(null); // 'ALL' | a program id
   const [entryCount, setEntryCount] = useState('3'); // 'all' | '3' | '5' | '10'
-  const [expandedChart, setExpandedChart] = useState(false); // horizontal-scroll wide view
+  const [expandedChart, setExpandedChart] = useState(false); // fullscreen rotated chart view
 
   const switchPointsView = (view) => setPointsView(view);
 
-  // running total per program (all-time) — used for the dropdown labels and
-  // the summary line under the chart. Assumes each program_challenges row
-  // carries a `program_id` linking it back to the programs table; if your
-  // schema names that column differently, swap it below.
+  // running total per program (all-time) — used for dropdown labels and summary lines.
+  // Assumes each program_challenges row carries a `program_id` linking it back to the
+  // programs table; if your schema names that column differently, swap it below.
   const programTotalsMap = useMemo(() => {
     const totals = {};
     pointsRecords.forEach(p => {
@@ -149,20 +149,55 @@ export default function StudentChartsModal({
     return totals;
   }, [challengeById, pointsRecords]);
 
-  // default to the first program once the list loads
+  // every configured challenge grouped under its program — powers the "(N challenges)"
+  // count shown next to each program name and the expandable breakdown list.
+  const challengesByProgram = useMemo(() => {
+    const map = {};
+    challenges.forEach(c => {
+      if (!c.program_id) return;
+      (map[c.program_id] = map[c.program_id] || []).push(c);
+    });
+    return map;
+  }, [challenges]);
+
+  // this student's earned points per individual challenge (summed across all awards)
+  const earnedByChallenge = useMemo(() => {
+    const m = {};
+    pointsRecords.forEach(p => { m[p.challenge_id] = (m[p.challenge_id] || 0) + Number(p.points_awarded || 0); });
+    return m;
+  }, [pointsRecords]);
+
+  // which programs currently have their challenge breakdown expanded — a Set so
+  // more than one can be open at once, independent of chart controls above
+  const [expandedProgramIds, setExpandedProgramIds] = useState(new Set());
+  const toggleProgramExpand = (id) => {
+    setExpandedProgramIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  // default to "All Programs" once the list loads
   useEffect(() => {
     if (pointsView === 'cumulative' && !selectedProgramId && programs && programs.length > 0) {
-      setSelectedProgramId(programs[0].id);
+      setSelectedProgramId('ALL');
     }
   }, [pointsView, programs, selectedProgramId]);
 
+  const isAllPrograms = selectedProgramId === 'ALL';
   const selectedProgramIndex = (programs || []).findIndex(p => p.id === selectedProgramId);
   const selectedProgramObj = selectedProgramIndex >= 0 ? programs[selectedProgramIndex] : null;
   const selectedProgramColor = colorForProgram(selectedProgramIndex, selectedProgramObj);
 
-  // every individual award for the selected program, oldest → newest
+  // one row per program with its all-time total — used for the "All Programs" overview chart
+  const programTotalsList = useMemo(() => {
+    return (programs || []).map(pr => ({ ...pr, total: programTotalsMap[pr.id] || 0 }));
+  }, [programs, programTotalsMap]);
+
+  // every individual award for the selected single program, oldest → newest
   const selectedProgramEntries = useMemo(() => {
-    if (!selectedProgramId) return [];
+    if (!selectedProgramId || isAllPrograms) return [];
     return pointsRecords
       .filter(p => challengeById[p.challenge_id]?.program_id === selectedProgramId)
       .map(p => ({
@@ -172,7 +207,7 @@ export default function StudentChartsModal({
         date: p.awarded_at || p.created_at,
       }))
       .sort((a, b) => new Date(a.date) - new Date(b.date));
-  }, [selectedProgramId, pointsRecords, challengeById]);
+  }, [selectedProgramId, isAllPrograms, pointsRecords, challengeById]);
 
   // sliced down to the number of most-recent entries picked in the selector
   const displayedProgramEntries = useMemo(() => {
@@ -297,10 +332,58 @@ export default function StudentChartsModal({
     };
   }, [tab, pointsView, chartReady, pointsList]);
 
-  // Points tab — BY PROGRAM view: one bar per award entry for the selected
-  // program (so 5 awards = 5 bars), in the program's own color, optional trend line.
+  // Points tab — BY PROGRAM view: either an "All Programs" totals overview
+  // (one bar per program, tap to drill into it) or, for a single selected
+  // program, one bar per individual award entry (so 5 awards = 5 bars).
   useChart(programEntriesCanvasRef, () => {
-    if (tab !== 'points' || pointsView !== 'cumulative' || !chartReady || displayedProgramEntries.length === 0) return null;
+    if (tab !== 'points' || pointsView !== 'cumulative' || !chartReady) return null;
+
+    if (isAllPrograms) {
+      if (programTotalsList.length === 0) return null;
+      const values = programTotalsList.map(p => p.total);
+      const colors = programTotalsList.map((p, i) => colorForProgram(i, p));
+      const datasets = [
+        {
+          type: 'bar',
+          label: 'Points',
+          data: values,
+          backgroundColor: colors,
+          borderRadius: 8,
+          borderSkipped: false,
+          maxBarThickness: 44,
+          order: 2,
+          hideLabels: true,
+        },
+      ];
+      if (showProgramTrend) {
+        datasets.push({
+          type: 'line', label: 'Trend', data: values,
+          borderColor: TREND_ORANGE, backgroundColor: TREND_ORANGE, borderWidth: 2,
+          pointRadius: 4, pointBackgroundColor: TREND_ORANGE, tension: 0.35, order: 1,
+        });
+      }
+      return {
+        data: { labels: programTotalsList.map(p => p.name), datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 900, easing: 'easeOutCubic' },
+          layout: { padding: { top: 20 } },
+          plugins: { legend: { display: false }, valueLabels: true },
+          scales: {
+            x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748b' } },
+            y: { beginAtZero: true, grid: { color: '#eef2f7' }, ticks: { font: { size: 10 }, color: '#64748b' } },
+          },
+          onClick: (evt, elements) => {
+            if (!elements.length) return;
+            const pr = programTotalsList[elements[0].index];
+            if (pr) setSelectedProgramId(pr.id);
+          },
+        },
+      };
+    }
+
+    if (displayedProgramEntries.length === 0) return null;
     const values = displayedProgramEntries.map(e => e.points);
     const datasets = [
       {
@@ -343,7 +426,7 @@ export default function StudentChartsModal({
         },
       },
     };
-  }, [tab, pointsView, chartReady, displayedProgramEntries, showProgramTrend, selectedProgramColor, expandedChart]);
+  }, [tab, pointsView, chartReady, isAllPrograms, programTotalsList, displayedProgramEntries, showProgramTrend, selectedProgramColor, expandedChart]);
 
   // Attendance tab — full pie chart, present vs absent
   useChart(attendanceCanvasRef, () => {
@@ -409,9 +492,94 @@ export default function StudentChartsModal({
     };
   }, [tab, chartReady, bmiSeries]);
 
+  // shared collapsible "Program (N challenges)" list — click a program to expand
+  // and see every challenge under it with this student's points. Used under both
+  // the Points Given and By Program sub-views so the breakdown is consistent.
+  const renderProgramList = () => (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', marginBottom: 6 }}>PROGRAMS</div>
+      {(programs || []).map((pr, i) => {
+        const progChallenges = challengesByProgram[pr.id] || [];
+        const isOpen = expandedProgramIds.has(pr.id);
+        const dotColor = colorForProgram(i, pr);
+        return (
+          <div key={pr.id} style={{ marginBottom: 6 }}>
+            <div
+              onClick={() => toggleProgramExpand(pr.id)}
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '10px 12px', borderRadius: 10, background: 'var(--card2)', cursor: 'pointer',
+                border: `1px solid ${dotColor}`,
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, display: 'inline-block', flexShrink: 0 }} />
+                {pr.name}
+                <span style={{ color: 'var(--gray)', fontWeight: 400, fontSize: 11 }}>
+                  ({progChallenges.length} challenge{progChallenges.length === 1 ? '' : 's'})
+                </span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <b style={{ color: BLUE, fontSize: 13 }}>{programTotalsMap[pr.id] || 0} pts</b>
+                <span style={{ color: 'var(--gray)', fontSize: 11 }}>{isOpen ? '▲' : '▼'}</span>
+              </span>
+            </div>
+
+            {isOpen && (
+              <div style={{ marginTop: 4 }}>
+                {progChallenges.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 12 }}>No challenges configured for this program.</div>
+                ) : progChallenges.map(c => (
+                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 4px 8px 14px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+                    <span>{c.name}</span>
+                    <b style={{ color: earnedByChallenge[c.id] ? BLUE : 'var(--gray)' }}>{earnedByChallenge[c.id] || 0} pts</b>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
-    // Rendered in-flow as the page content (swapped in by the parent) instead of a
+    <>
+    {/* fullscreen rotated chart view — like a trading-app landscape chart.
+        Rotates a viewport-sized box via CSS transform (no real device orientation
+        change / permission needed) and re-hosts the SAME canvas node so the chart
+        just resizes into it. */}
+    {expandedChart && (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'var(--bg, #0b0f14)' }}>
+        <div
+          style={{
+            position: 'fixed', top: '50%', left: '50%',
+            width: '100vh', height: '100vw',
+            transform: 'translate(-50%, -50%) rotate(90deg)',
+            display: 'flex', flexDirection: 'column', boxSizing: 'border-box', padding: 16,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexShrink: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--offwhite)' }}>
+              {isAllPrograms ? 'All Programs' : selectedProgramObj?.name}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--gray)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showProgramTrend} onChange={e => setShowProgramTrend(e.target.checked)} />
+                Trend
+              </label>
+              <button onClick={() => setExpandedChart(false)} style={{ background: 'none', border: 'none', fontSize: 20, color: 'var(--gray)', cursor: 'pointer', padding: 4 }}>✕</button>
+            </div>
+          </div>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <canvas ref={programEntriesCanvasRef} />
+          </div>
+        </div>
+      </div>
+    )}
+    {/* Rendered in-flow as the page content (swapped in by the parent) instead of a
     // fixed overlay — keeps a single scroll container with the rest of the app.
+    */}
     <div style={{ maxWidth: 560, margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: 'var(--gray)', cursor: 'pointer', padding: 4 }}>←</button>
@@ -480,16 +648,7 @@ export default function StudentChartsModal({
                   </div>
                 )}
 
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', margin: '14px 0 6px' }}>POINTS GIVEN</div>
-                {pointsList.slice().reverse().map(p => (
-                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 4px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-                    <span>{p.challengeName}</span>
-                    <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span style={{ color: 'var(--gray)', fontSize: 10 }}>{(p.date || '').slice(0, 10)}</span>
-                      <b style={{ color: BLUE }}>+{p.points}</b>
-                    </span>
-                  </div>
-                ))}
+                {renderProgramList()}
               </>
             )}
 
@@ -500,7 +659,7 @@ export default function StudentChartsModal({
                   <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 20 }}>No programs set up for this sport yet.</div>
                 ) : (
                   <>
-                    {/* controls row: program select + entry count — sit at the top */}
+                    {/* controls row: program select (All Programs + each program) + entry count — sit at the top */}
                     <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                       <select
                         value={selectedProgramId || ''}
@@ -508,23 +667,26 @@ export default function StudentChartsModal({
                         className="form-input"
                         style={{ flex: 1.4, fontSize: 12, padding: '7px 8px' }}
                       >
+                        <option value="ALL">All Programs</option>
                         {programs.map(pr => (
                           <option key={pr.id} value={pr.id}>
                             {pr.name} ({programTotalsMap[pr.id] || 0} pts)
                           </option>
                         ))}
                       </select>
-                      <select
-                        value={entryCount}
-                        onChange={e => setEntryCount(e.target.value)}
-                        className="form-input"
-                        style={{ flex: 1, fontSize: 12, padding: '7px 8px' }}
-                      >
-                        <option value="all">All entries</option>
-                        <option value="3">Last 3</option>
-                        <option value="5">Last 5</option>
-                        <option value="10">Last 10</option>
-                      </select>
+                      {!isAllPrograms && (
+                        <select
+                          value={entryCount}
+                          onChange={e => setEntryCount(e.target.value)}
+                          className="form-input"
+                          style={{ flex: 1, fontSize: 12, padding: '7px 8px' }}
+                        >
+                          <option value="all">All entries</option>
+                          <option value="3">Last 3</option>
+                          <option value="5">Last 5</option>
+                          <option value="10">Last 10</option>
+                        </select>
+                      )}
                     </div>
 
                     {/* trend line toggle — sits above the chart */}
@@ -535,66 +697,83 @@ export default function StudentChartsModal({
                       </label>
                     </div>
 
-                    {selectedProgramEntries.length === 0 ? (
-                      <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 20 }}>No points awarded in this program yet.</div>
+                    {(isAllPrograms ? programTotalsList.length === 0 : selectedProgramEntries.length === 0) ? (
+                      <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 20 }}>
+                        {isAllPrograms ? 'No programs set up for this sport yet.' : 'No points awarded in this program yet.'}
+                      </div>
                     ) : (
                       <>
-                        {/* chart card header: program name/total on the left, expand icon on the right */}
+                        {/* chart card header: name/total on the left, expand icon on the right */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                           <span style={{ fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: selectedProgramColor, display: 'inline-block' }} />
-                            {selectedProgramObj?.name}
-                            <span style={{ color: 'var(--gray)', fontWeight: 400 }}>· {programTotalsMap[selectedProgramId] || 0} pts total</span>
+                            {isAllPrograms ? (
+                              'All Programs'
+                            ) : (
+                              <>
+                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: selectedProgramColor, display: 'inline-block' }} />
+                                {selectedProgramObj?.name}
+                                <span style={{ color: 'var(--gray)', fontWeight: 400 }}>· {programTotalsMap[selectedProgramId] || 0} pts total</span>
+                              </>
+                            )}
                           </span>
                           <button
-                            onClick={() => setExpandedChart(x => !x)}
-                            title={expandedChart ? 'Collapse chart' : 'Expand chart horizontally'}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, color: 'var(--gray)', padding: 4 }}
+                            onClick={() => setExpandedChart(true)}
+                            title="Expand fullscreen"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--gray)', padding: 4 }}
                           >
-                            {expandedChart ? '⤡' : '⤢'}
+                            ⤢
                           </button>
                         </div>
 
-                        <div style={{ overflowX: expandedChart ? 'auto' : 'hidden' }}>
-                          <div style={{ height: 220, width: expandedChart ? Math.max(displayedProgramEntries.length * 60, 320) : '100%' }}>
+                        {!expandedChart && (
+                          <div style={{ height: 220 }}>
                             <canvas ref={programEntriesCanvasRef} />
-                          </div>
-                        </div>
-
-                        {/* current vs previous entry — quick read on whether performance is trending up or down */}
-                        {programTrendDelta && (
-                          <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10,
-                            fontSize: 12, fontWeight: 700,
-                            color: programTrendDelta.delta > 0 ? '#22c55e' : programTrendDelta.delta < 0 ? '#ef4444' : 'var(--gray)',
-                          }}>
-                            {programTrendDelta.delta > 0 ? '▲' : programTrendDelta.delta < 0 ? '▼' : '–'}
-                            {' '}{Math.abs(programTrendDelta.delta)} pts vs previous entry
-                            <span style={{ color: 'var(--gray)', fontWeight: 400 }}>
-                              ({programTrendDelta.previous} → {programTrendDelta.current})
-                            </span>
                           </div>
                         )}
 
-                        {/* chronological list of what's currently plotted, most recent first */}
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', margin: '14px 0 6px' }}>ENTRIES SHOWN</div>
-                        {displayedProgramEntries.slice().reverse().map(e => (
-                          <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 4px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-                            <span>{e.challengeName}</span>
-                            <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <span style={{ color: 'var(--gray)', fontSize: 10 }}>{(e.date || '').slice(0, 10)}</span>
-                              <b style={{ color: BLUE }}>+{e.points}</b>
-                            </span>
-                          </div>
-                        ))}
+                        {isAllPrograms ? (
+                          <div style={{ fontSize: 10, color: 'var(--gray)', textAlign: 'center', marginTop: 4 }}>Tap a bar to drill into that program</div>
+                        ) : (
+                          <>
+                            {/* current vs previous entry — quick read on whether performance is trending up or down */}
+                            {programTrendDelta && (
+                              <div style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10,
+                                fontSize: 12, fontWeight: 700,
+                                color: programTrendDelta.delta > 0 ? '#22c55e' : programTrendDelta.delta < 0 ? '#ef4444' : 'var(--gray)',
+                              }}>
+                                {programTrendDelta.delta > 0 ? '▲' : programTrendDelta.delta < 0 ? '▼' : '–'}
+                                {' '}{Math.abs(programTrendDelta.delta)} pts vs previous entry
+                                <span style={{ color: 'var(--gray)', fontWeight: 400 }}>
+                                  ({programTrendDelta.previous} → {programTrendDelta.current})
+                                </span>
+                              </div>
+                            )}
+
+                            {/* chronological list of what's currently plotted, most recent first */}
+                            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', margin: '14px 0 6px' }}>ENTRIES SHOWN</div>
+                            {displayedProgramEntries.slice().reverse().map(e => (
+                              <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 4px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+                                <span>{e.challengeName}</span>
+                                <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                  <span style={{ color: 'var(--gray)', fontSize: 10 }}>{(e.date || '').slice(0, 10)}</span>
+                                  <b style={{ color: BLUE }}>+{e.points}</b>
+                                </span>
+                              </div>
+                            ))}
+                          </>
+                        )}
                       </>
                     )}
+
+                    {renderProgramList()}
                   </>
                 )}
               </>
             )}
           </div>
         )}
+
 
         {/* ---------- ATTENDANCE (full pie) ---------- */}
         {tab === 'attendance' && (
@@ -644,5 +823,6 @@ export default function StudentChartsModal({
         )}
       </div>
     </div>
+    </>
   );
 }
