@@ -101,13 +101,18 @@ export default function PerformancePage() {
       sessionDatesBySport[a.sport].add(a.date);
     });
 
-    const presentCounts = {};
+    // distinct present DATES per student+sport — using a Set (not a raw row
+    // count) so a duplicate row on the same date (e.g. the student is in more
+    // than one batch and got marked once per batch) doesn't double-count and
+    // push the percentage over 100%.
+    const presentDates = {};
     const studentSportKeys = new Set();
     attendance.forEach(a => {
       const key = `${a.student_id}|${a.sport}`;
       studentSportKeys.add(key);
       if ((a.status || '').toUpperCase() === PRESENT_STATUS) {
-        presentCounts[key] = (presentCounts[key] || 0) + 1;
+        presentDates[key] = presentDates[key] || new Set();
+        presentDates[key].add(a.date);
       }
     });
 
@@ -115,8 +120,8 @@ export default function PerformancePage() {
     studentSportKeys.forEach(key => {
       const sport = key.split('|')[1];
       const totalDays = sessionDatesBySport[sport]?.size || 0;
-      const present = presentCounts[key] || 0;
-      out[key] = totalDays ? (present / totalDays) * 100 : 0;
+      const present = presentDates[key]?.size || 0;
+      out[key] = totalDays ? Math.min(100, (present / totalDays) * 100) : 0;
     });
     return out;
   }, [attendance]);
