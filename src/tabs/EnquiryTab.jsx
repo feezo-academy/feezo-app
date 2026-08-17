@@ -368,7 +368,7 @@ export default function EnquiryTab() {
         })}
       </div>
 
-      {createPortal(
+      {!showAdd && !detail && createPortal(
         <button
           onClick={openAdd}
           aria-label="Add enquiry"
@@ -399,8 +399,8 @@ export default function EnquiryTab() {
       )}
 
       {showAdd && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-end' }} onClick={() => setShowAdd(false)}>
-          <div className="card" style={{ width: '100%', maxWidth: 480, margin: '0 auto', maxHeight: '88vh', overflowY: 'auto', padding: 16 }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 62, background: 'rgba(10,20,40,.55)', zIndex: 250, display: 'flex', alignItems: 'flex-end' }} onClick={() => setShowAdd(false)}>
+          <div className="card" style={{ width: '100%', maxWidth: 480, margin: '0 auto', maxHeight: '85vh', overflowY: 'auto', padding: 16 }} onClick={e => e.stopPropagation()}>
             <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>💬 New Query</div>
             {addError && <div style={{ fontSize: 12.5, color: '#dc2626', background: 'rgba(220,38,38,.08)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>⚠️ {addError}</div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -444,8 +444,8 @@ export default function EnquiryTab() {
       )}
 
       {detail && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-end' }} onClick={closeDetail}>
-          <div className="card" style={{ width: '100%', maxWidth: 480, margin: '0 auto', maxHeight: '90vh', overflowY: 'auto', padding: 16 }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 62, background: 'rgba(10,20,40,.55)', zIndex: 250, display: 'flex', alignItems: 'flex-end' }} onClick={closeDetail}>
+          <div className="card" style={{ width: '100%', maxWidth: 480, margin: '0 auto', maxHeight: '85vh', overflowY: 'auto', padding: 16 }} onClick={e => e.stopPropagation()}>
             {!editing ? (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
