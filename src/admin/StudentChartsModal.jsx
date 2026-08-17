@@ -126,47 +126,70 @@ export default function StudentChartsModal({
       .sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [pointsRecords, challengeById]);
 
-  // entries (individual awards) vs cumulative (per-program totals)
+  // entries (individual awards, all programs mixed) vs by-program (pick one program, see its own award history/trend)
   const [pointsView, setPointsView] = useState('entries'); // 'entries' | 'cumulative'
   const [showProgramTrend, setShowProgramTrend] = useState(true);
-  const [selectedProgram, setSelectedProgram] = useState(null); // program clicked on the bar chart
-  const [expandProgram, setExpandProgram] = useState(false); // whether its challenge breakdown is open
+  const [selectedProgramId, setSelectedProgramId] = useState(null);
+  const [entryCount, setEntryCount] = useState('3'); // 'all' | '3' | '5' | '10'
+  const [expandedChart, setExpandedChart] = useState(false); // horizontal-scroll wide view
 
-  const switchPointsView = (view) => {
-    setPointsView(view);
-    setSelectedProgram(null);
-    setExpandProgram(false);
-  };
+  const switchPointsView = (view) => setPointsView(view);
 
-  // cumulative points per program — assumes each program_challenges row carries
-  // a `program_id` linking it back to the programs table. If your schema names
-  // that column differently, swap it below.
-  const programTotals = useMemo(() => {
-    const totalsByProgram = {};
+  // running total per program (all-time) — used for the dropdown labels and
+  // the summary line under the chart. Assumes each program_challenges row
+  // carries a `program_id` linking it back to the programs table; if your
+  // schema names that column differently, swap it below.
+  const programTotalsMap = useMemo(() => {
+    const totals = {};
     pointsRecords.forEach(p => {
       const c = challengeById[p.challenge_id];
-      if (!c) return;
-      const progId = c.program_id;
-      if (!progId) return;
-      totalsByProgram[progId] = (totalsByProgram[progId] || 0) + Number(p.points_awarded || 0);
+      if (!c || !c.program_id) return;
+      totals[c.program_id] = (totals[c.program_id] || 0) + Number(p.points_awarded || 0);
     });
-    return (programs || []).map(pr => ({
-      ...pr,
-      total: totalsByProgram[pr.id] || 0,
-    }));
-  }, [programs, challengeById, pointsRecords]);
+    return totals;
+  }, [challengeById, pointsRecords]);
 
-  const challengesForSelectedProgram = useMemo(() => {
-    if (!selectedProgram) return [];
-    const totals = {};
-    challenges
-      .filter(c => c.program_id === selectedProgram.id)
-      .forEach(c => { totals[c.id] = { id: c.id, name: c.name, points: 0 }; });
-    pointsRecords.forEach(p => {
-      if (totals[p.challenge_id]) totals[p.challenge_id].points += Number(p.points_awarded || 0);
-    });
-    return Object.values(totals).sort((a, b) => b.points - a.points);
-  }, [selectedProgram, challenges, pointsRecords]);
+  // default to the first program once the list loads
+  useEffect(() => {
+    if (pointsView === 'cumulative' && !selectedProgramId && programs && programs.length > 0) {
+      setSelectedProgramId(programs[0].id);
+    }
+  }, [pointsView, programs, selectedProgramId]);
+
+  const selectedProgramIndex = (programs || []).findIndex(p => p.id === selectedProgramId);
+  const selectedProgramObj = selectedProgramIndex >= 0 ? programs[selectedProgramIndex] : null;
+  const selectedProgramColor = colorForProgram(selectedProgramIndex, selectedProgramObj);
+
+  // every individual award for the selected program, oldest → newest
+  const selectedProgramEntries = useMemo(() => {
+    if (!selectedProgramId) return [];
+    return pointsRecords
+      .filter(p => challengeById[p.challenge_id]?.program_id === selectedProgramId)
+      .map(p => ({
+        id: p.id,
+        challengeName: challengeById[p.challenge_id]?.name || 'Challenge',
+        points: Number(p.points_awarded || 0),
+        date: p.awarded_at || p.created_at,
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [selectedProgramId, pointsRecords, challengeById]);
+
+  // sliced down to the number of most-recent entries picked in the selector
+  const displayedProgramEntries = useMemo(() => {
+    if (entryCount === 'all') return selectedProgramEntries;
+    const n = Number(entryCount);
+    return selectedProgramEntries.slice(-n);
+  }, [selectedProgramEntries, entryCount]);
+
+  // current entry vs the one right before it, so you can see at a glance
+  // whether the student's latest performance is trending up or down
+  const programTrendDelta = useMemo(() => {
+    const n = selectedProgramEntries.length;
+    if (n < 2) return null;
+    const current = selectedProgramEntries[n - 1];
+    const previous = selectedProgramEntries[n - 2];
+    return { current: current.points, previous: previous.points, delta: current.points - previous.points };
+  }, [selectedProgramEntries]);
 
   // ---------- Attendance tab data ----------
   const presentDays = attendanceRecords.filter(a => (a.status || '').toUpperCase() === PRESENT_STATUS).length;
@@ -225,7 +248,7 @@ export default function StudentChartsModal({
 
   // ---------- chart instances ----------
   const pointsCanvasRef = useRef(null);
-  const programsCanvasRef = useRef(null);
+  const programEntriesCanvasRef = useRef(null);
   const attendanceCanvasRef = useRef(null);
   const bmiCanvasRef = useRef(null);
 
@@ -274,17 +297,17 @@ export default function StudentChartsModal({
     };
   }, [tab, pointsView, chartReady, pointsList]);
 
-  // Points tab — CUMULATIVE view: one bar per program, own color per bar, optional trend line, click-to-drill
-  useChart(programsCanvasRef, () => {
-    if (tab !== 'points' || pointsView !== 'cumulative' || !chartReady || programTotals.length === 0) return null;
-    const values = programTotals.map(p => p.total);
-    const colors = programTotals.map((p, i) => colorForProgram(i, p));
+  // Points tab — BY PROGRAM view: one bar per award entry for the selected
+  // program (so 5 awards = 5 bars), in the program's own color, optional trend line.
+  useChart(programEntriesCanvasRef, () => {
+    if (tab !== 'points' || pointsView !== 'cumulative' || !chartReady || displayedProgramEntries.length === 0) return null;
+    const values = displayedProgramEntries.map(e => e.points);
     const datasets = [
       {
         type: 'bar',
         label: 'Points',
         data: values,
-        backgroundColor: colors,
+        backgroundColor: selectedProgramColor,
         borderRadius: 8,
         borderSkipped: false,
         maxBarThickness: 44,
@@ -307,8 +330,10 @@ export default function StudentChartsModal({
       });
     }
     return {
-      data: { labels: programTotals.map(p => p.name), datasets },
+      data: { labels: displayedProgramEntries.map(e => (e.date || '').slice(0, 10)), datasets },
       options: {
+        responsive: true,
+        maintainAspectRatio: false,
         animation: { duration: 900, easing: 'easeOutCubic' },
         layout: { padding: { top: 20 } },
         plugins: { legend: { display: false }, valueLabels: true },
@@ -316,17 +341,9 @@ export default function StudentChartsModal({
           x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#64748b' } },
           y: { beginAtZero: true, grid: { color: '#eef2f7' }, ticks: { font: { size: 10 }, color: '#64748b' } },
         },
-        onClick: (evt, elements) => {
-          if (!elements.length) return;
-          const idx = elements[0].index;
-          const pr = programTotals[idx];
-          if (!pr) return;
-          setSelectedProgram(pr);
-          setExpandProgram(false);
-        },
       },
     };
-  }, [tab, pointsView, chartReady, programTotals, showProgramTrend]);
+  }, [tab, pointsView, chartReady, displayedProgramEntries, showProgramTrend, selectedProgramColor, expandedChart]);
 
   // Attendance tab — full pie chart, present vs absent
   useChart(attendanceCanvasRef, () => {
@@ -476,65 +493,101 @@ export default function StudentChartsModal({
               </>
             )}
 
-            {/* ---------- CUMULATIVE (by program) sub-view ---------- */}
+            {/* ---------- BY PROGRAM sub-view ---------- */}
             {pointsView === 'cumulative' && (
               <>
                 {!programs || programs.length === 0 ? (
                   <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 20 }}>No programs set up for this sport yet.</div>
                 ) : (
                   <>
+                    {/* controls row: program select + entry count — sit at the top */}
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                      <select
+                        value={selectedProgramId || ''}
+                        onChange={e => setSelectedProgramId(e.target.value)}
+                        className="form-input"
+                        style={{ flex: 1.4, fontSize: 12, padding: '7px 8px' }}
+                      >
+                        {programs.map(pr => (
+                          <option key={pr.id} value={pr.id}>
+                            {pr.name} ({programTotalsMap[pr.id] || 0} pts)
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={entryCount}
+                        onChange={e => setEntryCount(e.target.value)}
+                        className="form-input"
+                        style={{ flex: 1, fontSize: 12, padding: '7px 8px' }}
+                      >
+                        <option value="all">All entries</option>
+                        <option value="3">Last 3</option>
+                        <option value="5">Last 5</option>
+                        <option value="10">Last 10</option>
+                      </select>
+                    </div>
+
                     {/* trend line toggle — sits above the chart */}
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, fontSize: 11, color: 'var(--gray)', cursor: 'pointer', marginBottom: 6 }}>
-                      <input type="checkbox" checked={showProgramTrend} onChange={e => setShowProgramTrend(e.target.checked)} />
-                      Trend line
-                    </label>
-
-                    <div style={{ height: 220 }}>
-                      <canvas ref={programsCanvasRef} />
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--gray)', textAlign: 'center', marginTop: 4 }}>Tap a bar to see that program's total</div>
-
-                    {/* legend chips so colors are identifiable without tapping */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10, justifyContent: 'center' }}>
-                      {programTotals.map((pr, i) => (
-                        <span key={pr.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--gray)' }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: colorForProgram(i, pr), display: 'inline-block' }} />
-                          {pr.name}
-                        </span>
-                      ))}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--gray)', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={showProgramTrend} onChange={e => setShowProgramTrend(e.target.checked)} />
+                        Trend line
+                      </label>
                     </div>
 
-                    {/* selected program summary — click to drill into challenges */}
-                    {selectedProgram && (
-                      <div style={{ marginTop: 14 }}>
-                        <div
-                          onClick={() => setExpandProgram(e => !e)}
-                          style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '10px 12px', borderRadius: 10, background: 'var(--card2)', cursor: 'pointer',
-                            border: `1px solid ${colorForProgram(programTotals.findIndex(p => p.id === selectedProgram.id), selectedProgram)}`,
-                          }}
-                        >
-                          <span style={{ fontWeight: 700, fontSize: 13 }}>{selectedProgram.name}</span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <b style={{ color: BLUE, fontSize: 13 }}>{selectedProgram.total} pts</b>
-                            <span style={{ color: 'var(--gray)', fontSize: 11 }}>{expandProgram ? '▲' : '▼'}</span>
+                    {selectedProgramEntries.length === 0 ? (
+                      <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 20 }}>No points awarded in this program yet.</div>
+                    ) : (
+                      <>
+                        {/* chart card header: program name/total on the left, expand icon on the right */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: selectedProgramColor, display: 'inline-block' }} />
+                            {selectedProgramObj?.name}
+                            <span style={{ color: 'var(--gray)', fontWeight: 400 }}>· {programTotalsMap[selectedProgramId] || 0} pts total</span>
                           </span>
+                          <button
+                            onClick={() => setExpandedChart(x => !x)}
+                            title={expandedChart ? 'Collapse chart' : 'Expand chart horizontally'}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, color: 'var(--gray)', padding: 4 }}
+                          >
+                            {expandedChart ? '⤡' : '⤢'}
+                          </button>
                         </div>
 
-                        {expandProgram && (
-                          <div style={{ marginTop: 6 }}>
-                            {challengesForSelectedProgram.length === 0 ? (
-                              <div style={{ fontSize: 12, color: 'var(--gray)', textAlign: 'center', padding: 14 }}>No challenges recorded for this program yet.</div>
-                            ) : challengesForSelectedProgram.map(c => (
-                              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 4px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-                                <span>{c.name}</span>
-                                <b style={{ color: BLUE }}>{c.points} pts</b>
-                              </div>
-                            ))}
+                        <div style={{ overflowX: expandedChart ? 'auto' : 'hidden' }}>
+                          <div style={{ height: 220, width: expandedChart ? Math.max(displayedProgramEntries.length * 60, 320) : '100%' }}>
+                            <canvas ref={programEntriesCanvasRef} />
+                          </div>
+                        </div>
+
+                        {/* current vs previous entry — quick read on whether performance is trending up or down */}
+                        {programTrendDelta && (
+                          <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10,
+                            fontSize: 12, fontWeight: 700,
+                            color: programTrendDelta.delta > 0 ? '#22c55e' : programTrendDelta.delta < 0 ? '#ef4444' : 'var(--gray)',
+                          }}>
+                            {programTrendDelta.delta > 0 ? '▲' : programTrendDelta.delta < 0 ? '▼' : '–'}
+                            {' '}{Math.abs(programTrendDelta.delta)} pts vs previous entry
+                            <span style={{ color: 'var(--gray)', fontWeight: 400 }}>
+                              ({programTrendDelta.previous} → {programTrendDelta.current})
+                            </span>
                           </div>
                         )}
-                      </div>
+
+                        {/* chronological list of what's currently plotted, most recent first */}
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', margin: '14px 0 6px' }}>ENTRIES SHOWN</div>
+                        {displayedProgramEntries.slice().reverse().map(e => (
+                          <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 4px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+                            <span>{e.challengeName}</span>
+                            <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <span style={{ color: 'var(--gray)', fontSize: 10 }}>{(e.date || '').slice(0, 10)}</span>
+                              <b style={{ color: BLUE }}>+{e.points}</b>
+                            </span>
+                          </div>
+                        ))}
+                      </>
                     )}
                   </>
                 )}
