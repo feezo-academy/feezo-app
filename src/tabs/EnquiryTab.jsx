@@ -85,6 +85,7 @@ export default function EnquiryTab() {
   const [convertingEnqId, setConvertingEnqId] = useState(null);
 
   const notesScrollRef = useRef(null);
+  const nameInputRef = useRef(null);
 
   const createdByName = appUser?.name || appUser?.id || 'Staff';
 
@@ -146,6 +147,14 @@ export default function EnquiryTab() {
     setAddError('');
     setShowAdd(true);
   };
+
+  // Focus the Name field (opens the keyboard on mobile) once the add form has mounted
+  useEffect(() => {
+    if (showAdd) {
+      const t = setTimeout(() => nameInputRef.current?.focus(), 60);
+      return () => clearTimeout(t);
+    }
+  }, [showAdd]);
 
   const saveEnquiry = async () => {
     if (!addForm.name.trim()) { setAddError('Name is required.'); return; }
@@ -288,7 +297,6 @@ export default function EnquiryTab() {
               >🗄️ Archive</button>
             </div>
           )}
-          <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add</button>
         </div>
       </div>
 
@@ -360,39 +368,71 @@ export default function EnquiryTab() {
         })}
       </div>
 
+      {createPortal(
+        <button
+          onClick={openAdd}
+          aria-label="Add enquiry"
+          style={{
+            position: 'fixed',
+            right: 18,
+            bottom: 76,
+            width: 54,
+            height: 54,
+            borderRadius: '50%',
+            background: 'var(--accent2)',
+            color: '#fff',
+            border: 'none',
+            fontSize: 26,
+            fontWeight: 600,
+            lineHeight: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 6px 16px rgba(0,0,0,.28)',
+            cursor: 'pointer',
+            zIndex: 500,
+          }}
+        >
+          +
+        </button>,
+        document.body
+      )}
+
       {showAdd && createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-end' }} onClick={() => setShowAdd(false)}>
           <div className="card" style={{ width: '100%', maxWidth: 480, margin: '0 auto', maxHeight: '88vh', overflowY: 'auto', padding: 16 }} onClick={e => e.stopPropagation()}>
             <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>💬 New Query</div>
             {addError && <div style={{ fontSize: 12.5, color: '#dc2626', background: 'rgba(220,38,38,.08)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>⚠️ {addError}</div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <Field label="Name *"><input className={inputStyle} value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} /></Field>
+              <Field label="Name *"><input ref={nameInputRef} className={inputStyle} value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} /></Field>
               <Field label="Phone"><input className={inputStyle} maxLength={10} value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: normalizePhone(e.target.value).slice(0, 10) }))} placeholder="10-digit mobile number" /></Field>
-              <Field label="Query / Interest"><textarea className={inputStyle} rows={3} style={{ resize: 'none' }} value={addForm.query} onChange={e => setAddForm(f => ({ ...f, query: e.target.value }))} placeholder="What are they enquiring about?" /></Field>
+              <Field label="Location / Area"><input className={inputStyle} value={addForm.location} onChange={e => setAddForm(f => ({ ...f, location: e.target.value }))} /></Field>
+              <div style={{ display: 'grid', gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gap: 10 }}>
+                {isAdmin && (
+                  <Field label="👤 Assign to Staff">
+                    <select className="form-select" value={addForm.assignedTo} onChange={e => setAddForm(f => ({ ...f, assignedTo: e.target.value }))}>
+                      <option value="">— Unassigned —</option>
+                      {staffList.map(u => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+                    </select>
+                  </Field>
+                )}
+                <Field label="Sport of interest">
+                  <select className="form-select" value={addForm.sport} onChange={e => setAddForm(f => ({ ...f, sport: e.target.value }))}>
+                    <option value="">Not specified</option>
+                    {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                  </select>
+                </Field>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Field label="Location / Area"><input className={inputStyle} value={addForm.location} onChange={e => setAddForm(f => ({ ...f, location: e.target.value }))} /></Field>
                 <Field label="Conversion Ratio">
                   <select className="form-select" value={addForm.conversionRatio} onChange={e => setAddForm(f => ({ ...f, conversionRatio: e.target.value }))}>
                     <option value="">Select…</option>
                     {CONVERSION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </Field>
+                <Field label="📅 Next Reminder Date"><input type="date" className={inputStyle} value={addForm.reminderDate} onChange={e => setAddForm(f => ({ ...f, reminderDate: e.target.value }))} /></Field>
               </div>
-              <Field label="Sport of interest">
-                <select className="form-select" value={addForm.sport} onChange={e => setAddForm(f => ({ ...f, sport: e.target.value }))}>
-                  <option value="">Not specified</option>
-                  {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                </select>
-              </Field>
-              <Field label="📅 Next Reminder Date"><input type="date" className={inputStyle} value={addForm.reminderDate} onChange={e => setAddForm(f => ({ ...f, reminderDate: e.target.value }))} /></Field>
-              {isAdmin && (
-                <Field label="👤 Assign to Staff">
-                  <select className="form-select" value={addForm.assignedTo} onChange={e => setAddForm(f => ({ ...f, assignedTo: e.target.value }))}>
-                    <option value="">— Unassigned —</option>
-                    {staffList.map(u => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                  </select>
-                </Field>
-              )}
+              <Field label="Query / Interest"><textarea className={inputStyle} rows={3} style={{ resize: 'none' }} value={addForm.query} onChange={e => setAddForm(f => ({ ...f, query: e.target.value }))} placeholder="What are they enquiring about?" /></Field>
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                 <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Cancel</button>
                 <button className="btn btn-primary" style={{ flex: 1.4 }} onClick={saveEnquiry}>💾 Save Query</button>
