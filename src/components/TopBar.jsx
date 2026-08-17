@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase } from '../lib/supabaseClient';
 import { addDays, isTaskMissed, todayIso, urgencyFor } from '../lib/calendarDate';
+import { isDue, isOverdue } from '../lib/scheduleUtils';
 
 // Note: todayIso/tomorrowIso now come from calendarDate.js, which builds
 // dates from local parts instead of toISOString() — avoids the day-shift
@@ -20,8 +22,9 @@ function statusFor(dateStr) {
   return { label: dateStr, color: 'var(--offwhite)' };
 }
 
-export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, onToggleNotif, hasNotif, enquiriesPath = '/enquiries', calendarPath = '/calendar' }) {
+export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, onToggleNotif, hasNotif, enquiriesPath = '/enquiries', calendarPath = '/calendar', performancePath = '/admin/performance' }) {
   const { isAdmin, academyId, appUser, user } = useAuth();
+  const { visibleStudents } = useAcademyData();
   const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
 
@@ -37,9 +40,11 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
   const [showEnquiryAlerts, setShowEnquiryAlerts] = useState(false);
   const [showLeaveAlerts, setShowLeaveAlerts] = useState(false);
   const [showTaskAlerts, setShowTaskAlerts] = useState(false);
+  const [showPerformanceAlerts, setShowPerformanceAlerts] = useState(false);
   const [selectedEnquiry, setSelectedEnquiry] = useState(null);
   const [selectedLeave, setSelectedLeave] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [selectedPerformance, setSelectedPerformance] = useState(null);
 
   const createdByName = appUser?.name || appUser?.id || 'Staff';
 
@@ -83,11 +88,29 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     if (!error) setTaskRows(data || []);
   };
 
+  // ---- Performance: programs due/overdue for a points entry ----
+  const [perfPrograms, setPerfPrograms] = useState([]);
+  const [perfChallenges, setPerfChallenges] = useState([]);
+  const [perfPoints, setPerfPoints] = useState([]);
+
+  const loadPerformance = async () => {
+    if (!academyId) return;
+    const [progRes, chalRes, ptsRes] = await Promise.all([
+      supabase.from('programs').select('id, name, sport, frequency, created_at').eq('academy_id', academyId),
+      supabase.from('program_challenges').select('id, program_id').eq('academy_id', academyId),
+      supabase.from('student_challenge_points').select('student_id, challenge_id, awarded_at, created_at').eq('academy_id', academyId),
+    ]);
+    if (!progRes.error) setPerfPrograms(progRes.data || []);
+    if (!chalRes.error) setPerfChallenges(chalRes.data || []);
+    if (!ptsRes.error) setPerfPoints(ptsRes.data || []);
+  };
+
   useEffect(() => {
     loadEnquiries();
     loadLeaves();
     loadTasks();
-    const t = setInterval(() => { loadEnquiries(); loadLeaves(); loadTasks(); }, 60000); // keep the bell fresh without a page reload
+    loadPerformance();
+    const t = setInterval(() => { loadEnquiries(); loadLeaves(); loadTasks(); loadPerformance(); }, 60000); // keep the bell fresh without a page reload
     return () => clearInterval(t);
     // eslint-disable-next-line
   }, [academyId]);
@@ -139,12 +162,57 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     dueSoon: taskPending.filter(t => !isTaskMissed(t) && !t.missed_reason).length,
   }), [taskPending]);
 
+  // one row per student+program that currently has a due (or overdue) points entry
+  const performancePending = useMemo(() => {
+    if (!perfPrograms.length || !visibleStudents?.length) return [];
+    const challengeToProgram = {};
+    perfChallenges.forEach(c => { challengeToProgram[c.id] = c.program_id; });
+
+    const lastEntryByStudentProgram = {};
+    perfPoints.forEach(p => {
+      const programId = challengeToProgram[p.challenge_id];
+      if (!programId) return;
+      const key = `${p.student_id}|${programId}`;
+      const date = p.awarded_at || p.created_at;
+      if (!lastEntryByStudentProgram[key] || new Date(date) > new Date(lastEntryByStudentProgram[key])) {
+        lastEntryByStudentProgram[key] = date;
+      }
+    });
+
+    const rows = [];
+    visibleStudents.forEach(student => {
+      const sports = new Set((student.enrollments || []).map(e => e.sport));
+      perfPrograms.forEach(program => {
+        if (!sports.has(program.sport)) return;
+        const hasChallenges = perfChallenges.some(c => c.program_id === program.id);
+        if (!hasChallenges) return;
+        const key = `${student.id}|${program.id}`;
+        const lastDate = lastEntryByStudentProgram[key];
+        if (!isDue(program, lastDate)) return;
+        rows.push({
+          id: key,
+          studentName: student.name,
+          programName: program.name,
+          sport: program.sport,
+          overdue: isOverdue(program, lastDate),
+        });
+      });
+    });
+    return rows;
+  }, [perfPrograms, perfChallenges, perfPoints, visibleStudents]);
+
+  const performanceUrgency = useMemo(() => ({
+    overdue: performancePending.filter(p => p.overdue).length,
+    dueSoon: performancePending.filter(p => !p.overdue).length,
+  }), [performancePending]);
+
   const dotFor = (urgency) => urgency.overdue > 0 ? '#ef4444' : (urgency.dueSoon > 0 ? '#f97316' : null);
   const enquiryDot = dotFor(enquiryUrgency);
   const leaveDot = dotFor(leaveUrgency);
   const taskDot = dotFor(taskUrgency);
-  const bellDot = [enquiryDot, leaveDot, taskDot].includes('#ef4444') ? '#ef4444'
-    : (enquiryDot || leaveDot || taskDot) ? '#f97316'
+  const performanceDot = dotFor(performanceUrgency);
+  const bellDot = [enquiryDot, leaveDot, taskDot, performanceDot].includes('#ef4444') ? '#ef4444'
+    : (enquiryDot || leaveDot || taskDot || performanceDot) ? '#f97316'
     : (hasNotif ? '#22c55e' : null);
 
   const openBell = () => {
@@ -171,6 +239,13 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     setShowTaskAlerts(false);
     setShowBellMenu(false);
     navigate(calendarPath, { state: { focusTaskId: selectedTask?.id } });
+  };
+
+  const goToPerformance = () => {
+    setSelectedPerformance(null);
+    setShowPerformanceAlerts(false);
+    setShowBellMenu(false);
+    navigate(performancePath);
   };
 
   return (
@@ -207,44 +282,69 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
               <>
                 <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={() => setShowBellMenu(false)} />
                 <div className="card" style={{ position: 'absolute', top: 40, right: 0, width: 230, padding: 6, zIndex: 999, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}>
-                  <div
-                    onClick={() => { if (enquiryPending.length > 0) { setShowBellMenu(false); setShowEnquiryAlerts(true); } }}
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: enquiryPending.length > 0 ? 'pointer' : 'default', opacity: enquiryPending.length > 0 ? 1 : 0.55 }}
-                    onMouseEnter={e => { if (enquiryPending.length > 0) e.currentTarget.style.background = 'var(--card2)'; }}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {enquiryDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: enquiryDot, flexShrink: 0 }} />}
-                      ⏰ Enquiry Alerts
-                    </span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{enquiryPending.length}</span>
-                  </div>
+                  {enquiryPending.length === 0 && leavePending.length === 0 && taskPending.length === 0 && performancePending.length === 0 && (
+                    <div style={{ padding: '14px 8px', textAlign: 'center', fontSize: 12.5, color: 'var(--gray)' }}>Nothing pending. 🎉</div>
+                  )}
 
-                  <div
-                    onClick={() => { if (leavePending.length > 0) { setShowBellMenu(false); setShowLeaveAlerts(true); } }}
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: leavePending.length > 0 ? 'pointer' : 'default', opacity: leavePending.length > 0 ? 1 : 0.55 }}
-                    onMouseEnter={e => { if (leavePending.length > 0) e.currentTarget.style.background = 'var(--card2)'; }}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {leaveDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: leaveDot, flexShrink: 0 }} />}
-                      🌴 Leave Alerts
-                    </span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{leavePending.length}</span>
-                  </div>
+                  {enquiryPending.length > 0 && (
+                    <div
+                      onClick={() => { setShowBellMenu(false); setShowEnquiryAlerts(true); }}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {enquiryDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: enquiryDot, flexShrink: 0 }} />}
+                        ⏰ Enquiry Alerts
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{enquiryPending.length}</span>
+                    </div>
+                  )}
 
-                  <div
-                    onClick={() => { if (taskPending.length > 0) { setShowBellMenu(false); setShowTaskAlerts(true); } }}
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: taskPending.length > 0 ? 'pointer' : 'default', opacity: taskPending.length > 0 ? 1 : 0.55 }}
-                    onMouseEnter={e => { if (taskPending.length > 0) e.currentTarget.style.background = 'var(--card2)'; }}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {taskDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: taskDot, flexShrink: 0 }} />}
-                      ✅ Task Alerts
-                    </span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{taskPending.length}</span>
-                  </div>
+                  {leavePending.length > 0 && (
+                    <div
+                      onClick={() => { setShowBellMenu(false); setShowLeaveAlerts(true); }}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {leaveDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: leaveDot, flexShrink: 0 }} />}
+                        🌴 Leave Alerts
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{leavePending.length}</span>
+                    </div>
+                  )}
+
+                  {taskPending.length > 0 && (
+                    <div
+                      onClick={() => { setShowBellMenu(false); setShowTaskAlerts(true); }}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {taskDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: taskDot, flexShrink: 0 }} />}
+                        ✅ Task Alerts
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{taskPending.length}</span>
+                    </div>
+                  )}
+
+                  {performancePending.length > 0 && (
+                    <div
+                      onClick={() => { setShowBellMenu(false); setShowPerformanceAlerts(true); }}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 8px', borderRadius: 6, cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {performanceDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: performanceDot, flexShrink: 0 }} />}
+                        🏆 Performance Alerts
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{performancePending.length}</span>
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -383,6 +483,44 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
         document.body
       )}
 
+      {/* ---- Performance Alerts table window ---- */}
+      {showPerformanceAlerts && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowPerformanceAlerts(false)}>
+          <div className="card" style={{ width: '100%', maxWidth: 420, maxHeight: '78vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>🏆 Performance Alerts {performancePending.length > 0 && `(${performancePending.length})`}</div>
+              <button onClick={() => setShowPerformanceAlerts(false)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {performancePending.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--gray)' }}>Nothing pending. 🎉</div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 8, padding: '8px 16px', fontSize: 10.5, fontWeight: 700, color: 'var(--gray)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                  <div style={{ flex: 1.3, minWidth: 0 }}>STUDENT</div>
+                  <div style={{ flex: 1.2, minWidth: 0 }}>PROGRAM</div>
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>STATUS</div>
+                </div>
+                <div style={{ overflowY: 'auto', flex: 1 }}>
+                  {performancePending.map(p => (
+                    <div key={p.id} onClick={() => { setShowPerformanceAlerts(false); setSelectedPerformance(p); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{ flex: 1.3, minWidth: 0, fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.studentName}</div>
+                      <div style={{ flex: 1.2, minWidth: 0, fontSize: 11.5, color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.programName}</div>
+                      <div style={{ flex: 1, minWidth: 0, textAlign: 'right', fontSize: 10.5, fontWeight: 700, color: p.overdue ? '#ef4444' : '#f97316', whiteSpace: 'nowrap' }}>{p.overdue ? 'Overdue' : 'Due'}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* ---- Enquiry detail popup ---- */}
       {selectedEnquiry && createPortal(
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelectedEnquiry(null)}>
@@ -453,6 +591,29 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
             </div>
             <button className="btn btn-primary" style={{ width: '100%', padding: 11 }} onClick={goToTask}>
               ➜ Go to Calendar
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ---- Performance detail popup ---- */}
+      {selectedPerformance && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelectedPerformance(null)}>
+          <div className="card" style={{ width: '100%', maxWidth: 320, padding: 16 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{selectedPerformance.studentName}</div>
+              <button onClick={() => setSelectedPerformance(null)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)', marginBottom: 8 }}>{selectedPerformance.sport} · {selectedPerformance.programName}</div>
+            <div style={{ fontSize: 12.5, marginBottom: 16 }}>
+              <span style={{ color: 'var(--gray)' }}>🏆 Points entry: </span>
+              <span style={{ fontWeight: 700, color: selectedPerformance.overdue ? '#ef4444' : '#f97316' }}>
+                {selectedPerformance.overdue ? 'Overdue' : 'Due now'}
+              </span>
+            </div>
+            <button className="btn btn-primary" style={{ width: '100%', padding: 11 }} onClick={goToPerformance}>
+              ➜ Go to Performance
             </button>
           </div>
         </div>,
