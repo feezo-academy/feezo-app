@@ -58,10 +58,12 @@ export function AuthProvider({ children }) {
   const assignedBatches = appUser?.assigned_batches || [];
   // Admins always see contact info; staff need the toggle explicitly granted in Staff Users.
   const canViewContact = isAdmin || !!appUser?.can_view_contact;
+  // Admins can always export PDF/XL; staff need the toggle explicitly granted in Staff Users.
+  const canExport = isAdmin || !!appUser?.can_export;
 
   const value = {
     user, appUser, academyId, loading,
-    isAdmin, assignedSports, assignedBatches, canViewContact,
+    isAdmin, assignedSports, assignedBatches, canViewContact, canExport,
     login, logout, refreshAppUser: () => loadAppUser(user),
   };
 
