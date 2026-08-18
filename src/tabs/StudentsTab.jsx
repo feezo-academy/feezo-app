@@ -39,7 +39,7 @@ function RollBadge({ rollNo }) {
 
 export default function StudentsTab() {
   const { visibleStudents, visibleSports, visibleBatches, refresh } = useAcademyData();
-  const { isAdmin, academyId, canViewContact } = useAuth();
+  const { isAdmin, academyId, canViewContact, canExport } = useAuth();
   const [search, setSearch] = useState('');
   const [sportFilter, setSportFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
@@ -104,14 +104,25 @@ export default function StudentsTab() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div className="section-title" style={{ marginBottom: 0, whiteSpace: 'nowrap' }}>👥 Students</div>
           {isAdmin && (
-            <div style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, background: 'var(--card2)', color: 'var(--gray)' }}>
-              {(sportFilter || batchFilter || search) ? `${filtered.length} of ${visibleStudents.length}` : `${visibleStudents.length} total`}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, background: 'var(--card2)', color: 'var(--gray)' }}>
+                {(sportFilter || batchFilter || search)
+                  ? `${activeList.length} active of ${visibleStudents.filter(s => !s.banned).length}`
+                  : `${visibleStudents.filter(s => !s.banned).length} active`}
+              </div>
+              {visibleStudents.some(s => s.banned) && (
+                <div style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, background: 'rgba(220,38,38,.12)', color: '#ef4444' }}>
+                  {(sportFilter || batchFilter || search)
+                    ? `${droppedList.length} dropped of ${visibleStudents.filter(s => s.banned).length}`
+                    : `${visibleStudents.filter(s => s.banned).length} dropped`}
+                </div>
+              )}
             </div>
           )}
         </div>
         <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button className="btn btn-gold btn-sm" onClick={() => exportStudentsPdf(filtered)}>PDF</button>
-          <button className="btn btn-success btn-sm" onClick={() => exportStudentsXlsx(filtered)}>XL</button>
+          {canExport && <button className="btn btn-gold btn-sm" onClick={() => exportStudentsPdf(filtered)}>PDF</button>}
+          {canExport && <button className="btn btn-success btn-sm" onClick={() => exportStudentsXlsx(filtered)}>XL</button>}
           {isAdmin && <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>}
           {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Add</button>}
         </div>
