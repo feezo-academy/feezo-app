@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import '../styles/landing.css';
 
@@ -74,11 +74,36 @@ function CountUp({ value, prefix = '', suffix = '', formatIN = false, start }) {
   return <>{prefix}{shown}{suffix}</>;
 }
 
+// Fades + slides an element up once it scrolls into view. Falls back to
+// already-visible for prefers-reduced-motion (handled in CSS).
+function Reveal({ as: Tag = 'div', className = '', children, ...rest }) {
+  const ref = useRef(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setInView(true); io.disconnect(); } },
+      { threshold: 0.15 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <Tag ref={ref} className={`lp-sr${inView ? ' lp-sr-in' : ''} ${className}`} {...rest}>
+      {children}
+    </Tag>
+  );
+}
+
 export default function LandingPage() {
   const [annual, setAnnual] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
   const [countStart, setCountStart] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
     // JetBrains Mono isn't loaded by index.html — inject it once for the scoreboard digits.
@@ -90,12 +115,16 @@ export default function LandingPage() {
       document.head.appendChild(link);
     }
     const t = setTimeout(() => setCountStart(true), 300);
-    return () => clearTimeout(t);
+
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { clearTimeout(t); window.removeEventListener('scroll', onScroll); };
   }, []);
 
   return (
     <div className="feezo-landing">
-      <header className="lp-header">
+      <header className={`lp-header${scrolled ? ' lp-scrolled' : ''}`}>
         <nav className="lp-wrap lp-nav">
           <div className="lp-brand">
             <span className="lp-brand-mark"><BrandMark /></span>
@@ -139,28 +168,34 @@ export default function LandingPage() {
             <div className="lp-hero-note lp-reveal lp-d4"><i className="ti ti-shield-check" /> No card needed to try &nbsp;&middot;&nbsp; Set up an academy in under 10 minutes</div>
           </div>
           <div>
-            <div className="lp-board">
-              <span className="lp-board-tag">Today, 6:42 PM</span>
-              <div className="lp-board-top">
-                <div className="lp-board-academy">
-                  <span className="lp-board-avatar" />
-                  <div><strong>Riverside Sports Academy</strong><span>Cricket &middot; Swimming &middot; Badminton</span></div>
+            <div className="lp-mock">
+              <span className="lp-mock-tag">Today, 6:42 PM</span>
+              <div className="lp-mock-bar">
+                <span className="lp-mock-dot" /><span className="lp-mock-dot" /><span className="lp-mock-dot" />
+                <span className="lp-mock-url">app.feezo.in/home</span>
+              </div>
+              <div className="lp-board">
+                <div className="lp-board-top">
+                  <div className="lp-board-academy">
+                    <span className="lp-board-avatar" />
+                    <div><strong>Riverside Sports Academy</strong><span>Cricket &middot; Swimming &middot; Badminton</span></div>
+                  </div>
+                  <span className="lp-live">LIVE</span>
                 </div>
-                <span className="lp-live">LIVE</span>
-              </div>
-              <div className="lp-board-stats">
-                <div className="lp-stat-tile lp-s1"><b><CountUp value={214} start={countStart} /></b><span>Students</span></div>
-                <div className="lp-stat-tile lp-s2"><b><CountUp value={92} suffix="%" start={countStart} /></b><span>Attendance</span></div>
-                <div className="lp-stat-tile lp-s3"><b><CountUp value={184200} prefix="\u20B9" formatIN start={countStart} /></b><span>Fees today</span></div>
-              </div>
-              <div className="lp-board-chart">
-                {WEEK_ATTENDANCE.map((v, i) => (
-                  <i key={i} style={{ height: `${(v / 100) * 46}px`, animationDelay: `${0.5 + i * 0.06}s` }} />
-                ))}
-              </div>
-              <div className="lp-board-foot">
-                <div className="lp-lead-chip"><span className="lp-medal">{'\u{1F947}'}</span> Top scorer this week: Aditya R.</div>
-                <small>+18 this month</small>
+                <div className="lp-board-stats">
+                  <div className="lp-stat-tile lp-s1"><b><CountUp value={214} start={countStart} /></b><span>Students</span></div>
+                  <div className="lp-stat-tile lp-s2"><b><CountUp value={92} suffix="%" start={countStart} /></b><span>Attendance</span></div>
+                  <div className="lp-stat-tile lp-s3"><b><CountUp value={184200} prefix="\u20B9" formatIN start={countStart} /></b><span>Fees today</span></div>
+                </div>
+                <div className="lp-board-chart">
+                  {WEEK_ATTENDANCE.map((v, i) => (
+                    <i key={i} style={{ height: `${(v / 100) * 48}px`, animationDelay: `${0.5 + i * 0.06}s` }} />
+                  ))}
+                </div>
+                <div className="lp-board-foot">
+                  <div className="lp-lead-chip"><span className="lp-medal">{'\u{1F947}'}</span> Top scorer this week: Aditya R.</div>
+                  <small>+18 this month</small>
+                </div>
               </div>
             </div>
           </div>
@@ -175,25 +210,80 @@ export default function LandingPage() {
 
       <section id="features">
         <div className="lp-wrap">
-          <div className="lp-sec-head">
+          <Reveal className="lp-sec-head">
             <span className="lp-eyebrow">Features</span>
             <h2>Everything your academy already does &mdash; just faster.</h2>
             <p>Built around the parts of running an academy that eat your evenings: attendance registers, fee follow-ups, and figuring out who's actually improving.</p>
-          </div>
+          </Reveal>
           <div className="lp-feat-grid">
             {[
-              { ic: 'lp-ic1', icon: 'ti-checkbox', title: 'Attendance in one tap', body: 'Mark a whole batch present or absent in seconds, with a locked daily record so nothing gets edited after the fact.' },
-              { ic: 'lp-ic2', icon: 'ti-cash', title: 'Fees without the follow-up', body: "See who's paid, who's due, and send a WhatsApp reminder from the same screen \u2014 no separate ledger book." },
-              { ic: 'lp-ic3', icon: 'ti-trophy', title: 'Performance & leaderboards', body: "Score students on points and attendance, and let a weighted leaderboard show who's putting in the work." },
-              { ic: 'lp-ic4', icon: 'ti-calendar-time', title: 'Staff scheduling & leave', body: 'Build weekly coach schedules and handle leave requests with a simple admin approval flow.' },
-              { ic: 'lp-ic5', icon: 'ti-file-report', title: 'Reports that export', body: 'Pull PDF and Excel reports for attendance, fees, and enquiries whenever a parent \u2014 or a branch owner \u2014 asks.' },
-              { ic: 'lp-ic6', icon: 'ti-building-skyscraper', title: 'Built for multiple branches', body: 'Run one academy or ten, each with its own students, staff, and sports, from a single login.' },
-            ].map((f) => (
-              <div className="lp-feat-card" key={f.title}>
+              {
+                ic: 'lp-ic1', icon: 'ti-checkbox', title: 'Attendance in one tap',
+                body: 'Mark a whole batch present or absent in seconds, with a locked daily record so nothing gets edited after the fact.',
+                mini: (
+                  <div className="lp-mini">
+                    <div className="lp-mini-row"><span>Morning batch</span><span className="lp-mini-chip lp-ok"><i className="ti ti-check" style={{ fontSize: 11 }} />18/20</span></div>
+                    <div className="lp-mini-row"><span>Evening batch</span><span className="lp-mini-chip lp-ok"><i className="ti ti-check" style={{ fontSize: 11 }} />22/24</span></div>
+                  </div>
+                ),
+              },
+              {
+                ic: 'lp-ic2', icon: 'ti-cash', title: 'Fees without the follow-up',
+                body: "See who's paid, who's due, and send a WhatsApp reminder from the same screen \u2014 no separate ledger book.",
+                mini: (
+                  <div className="lp-mini">
+                    <div className="lp-mini-row"><span>Aarav K.</span><span className="lp-mini-chip lp-ok">Paid</span></div>
+                    <div className="lp-mini-row"><span>Diya S.</span><span className="lp-mini-chip lp-due">Due \u20B91,200</span></div>
+                  </div>
+                ),
+              },
+              {
+                ic: 'lp-ic3', icon: 'ti-trophy', title: 'Performance & leaderboards',
+                body: "Score students on points and attendance, and let a weighted leaderboard show who's putting in the work.",
+                mini: (
+                  <div className="lp-mini">
+                    <div className="lp-mini-row"><span>{'\u{1F947}'} Aditya R.</span><div className="lp-mini-bar"><i style={{ width: '92%', background: 'linear-gradient(90deg,#FFB020,#F59E0B)' }} /></div></div>
+                    <div className="lp-mini-row"><span>{'\u{1F948}'} Meera V.</span><div className="lp-mini-bar"><i style={{ width: '81%', background: 'linear-gradient(90deg,#8E52FF,#6D28D9)' }} /></div></div>
+                  </div>
+                ),
+              },
+              {
+                ic: 'lp-ic4', icon: 'ti-calendar-time', title: 'Staff scheduling & leave',
+                body: 'Build weekly coach schedules and handle leave requests with a simple admin approval flow.',
+                mini: (
+                  <div className="lp-mini">
+                    <div className="lp-mini-row"><span>Coach Ravi</span><span className="lp-mini-chip lp-ok">On duty</span></div>
+                    <div className="lp-mini-row"><span>Coach Sana</span><span className="lp-mini-chip lp-due">On leave</span></div>
+                  </div>
+                ),
+              },
+              {
+                ic: 'lp-ic5', icon: 'ti-file-report', title: 'Reports that export',
+                body: 'Pull PDF and Excel reports for attendance, fees, and enquiries whenever a parent \u2014 or a branch owner \u2014 asks.',
+                mini: (
+                  <div className="lp-mini">
+                    <div className="lp-mini-row"><span><i className="ti ti-file-type-pdf" style={{ marginRight: 6 }} />Fees_August.pdf</span><span style={{ color: 'var(--lp-ink-faint)' }}>2.1 MB</span></div>
+                    <div className="lp-mini-row"><span><i className="ti ti-file-spreadsheet" style={{ marginRight: 6 }} />Attendance.xlsx</span><span style={{ color: 'var(--lp-ink-faint)' }}>640 KB</span></div>
+                  </div>
+                ),
+              },
+              {
+                ic: 'lp-ic6', icon: 'ti-building-skyscraper', title: 'Built for multiple branches',
+                body: 'Run one academy or ten, each with its own students, staff, and sports, from a single login.',
+                mini: (
+                  <div className="lp-mini">
+                    <div className="lp-mini-row"><span>Coimbatore Branch</span><span className="lp-mini-chip lp-ok">Active</span></div>
+                    <div className="lp-mini-row"><span>Chennai Branch</span><span className="lp-mini-chip lp-ok">Active</span></div>
+                  </div>
+                ),
+              },
+            ].map((f, i) => (
+              <Reveal className="lp-feat-card" key={f.title} style={{ transitionDelay: `${(i % 3) * 0.08}s` }}>
                 <div className={`lp-feat-icon ${f.ic}`}><i className={`ti ${f.icon}`} /></div>
                 <h3>{f.title}</h3>
                 <p>{f.body}</p>
-              </div>
+                {f.mini}
+              </Reveal>
             ))}
           </div>
         </div>
@@ -201,37 +291,37 @@ export default function LandingPage() {
 
       <section id="how" style={{ background: 'var(--lp-panel)', borderTop: '1px solid var(--lp-border)', borderBottom: '1px solid var(--lp-border)' }}>
         <div className="lp-wrap">
-          <div className="lp-sec-head lp-center" style={{ marginBottom: 64 }}>
+          <Reveal as="div" className="lp-sec-head lp-center" style={{ marginBottom: 64 }}>
             <span className="lp-eyebrow">How it works</span>
             <h2>Up and running before your next session.</h2>
-          </div>
+          </Reveal>
           <div className="lp-steps">
-            <div className="lp-step">
+            <Reveal as="div" className="lp-step">
               <div className="lp-step-num">01</div>
               <h3>Set up your academy</h3>
               <p>Add your sports, batches, and students &mdash; import from a spreadsheet if you've already got one.</p>
-            </div>
-            <div className="lp-step">
+            </Reveal>
+            <Reveal as="div" className="lp-step" style={{ transitionDelay: '.1s' }}>
               <div className="lp-step-num">02</div>
               <h3>Run your day</h3>
               <p>Mark attendance, log fees, and note enquiries as they happen, from your phone or the front desk.</p>
-            </div>
-            <div className="lp-step">
+            </Reveal>
+            <Reveal as="div" className="lp-step" style={{ transitionDelay: '.2s' }}>
               <div className="lp-step-num">03</div>
               <h3>Watch it add up</h3>
               <p>Attendance streaks, fee collection, and leaderboards update themselves &mdash; no month-end scramble.</p>
-            </div>
+            </Reveal>
           </div>
         </div>
       </section>
 
       <section id="pricing" className="lp-pricing">
         <div className="lp-wrap">
-          <div className="lp-sec-head lp-center">
+          <Reveal className="lp-sec-head lp-center">
             <span className="lp-eyebrow">Pricing</span>
             <h2>One plan for every stage of your academy.</h2>
             <p>Start small and upgrade as you add batches, branches, and coaches. All prices in INR, plus GST.</p>
-          </div>
+          </Reveal>
           <div className="lp-toggle-wrap">
             <span className={`lp-toggle-label${!annual ? ' lp-active' : ''}`}>Monthly</span>
             <button
@@ -245,14 +335,14 @@ export default function LandingPage() {
             <span className="lp-save-badge">Save up to 17%</span>
           </div>
           <div className="lp-plans">
-            {PLANS.map((p) => {
+            {PLANS.map((p, i) => {
               const price = annual ? p.price_annual : p.price_monthly;
               const period = annual ? '/year' : '/month';
               const equivMonthly = annual ? Math.round(p.price_annual / 12) : null;
               const fullYear = p.price_monthly * 12;
               const savePct = annual ? Math.round((1 - p.price_annual / fullYear) * 100) : 0;
               return (
-                <div className={`lp-plan${p.recommended ? ' lp-reco' : ''}`} key={p.code}>
+                <Reveal as="div" className={`lp-plan${p.recommended ? ' lp-reco' : ''}`} key={p.code} style={{ transitionDelay: `${i * 0.08}s` }}>
                   {p.recommended && <span className="lp-plan-badge">Most popular</span>}
                   <div className="lp-plan-name">{p.name}</div>
                   <div className="lp-plan-tagline">{p.tagline}</div>
@@ -269,7 +359,7 @@ export default function LandingPage() {
                   <Link to="/home" className={`lp-btn ${p.recommended ? 'lp-btn-primary' : 'lp-btn-ghost'} lp-btn-block`}>
                     Choose {p.name}
                   </Link>
-                </div>
+                </Reveal>
               );
             })}
           </div>
@@ -278,11 +368,11 @@ export default function LandingPage() {
 
       <section id="faq">
         <div className="lp-wrap">
-          <div className="lp-sec-head lp-center">
+          <Reveal className="lp-sec-head lp-center">
             <span className="lp-eyebrow">FAQ</span>
             <h2>Questions academy owners ask</h2>
-          </div>
-          <div className="lp-faq">
+          </Reveal>
+          <Reveal as="div" className="lp-faq">
             {FAQS.map((f, i) => (
               <div className={`lp-faq-item${openFaq === i ? ' lp-open' : ''}`} key={f.q}>
                 <div className="lp-faq-q" onClick={() => setOpenFaq(openFaq === i ? -1 : i)}>
@@ -291,19 +381,19 @@ export default function LandingPage() {
                 <div className="lp-faq-a">{f.a}</div>
               </div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 
       <section style={{ paddingTop: 0 }}>
-        <div className="lp-cta-band">
+        <Reveal as="div" className="lp-cta-band">
           <h2>Ready to ditch the spreadsheet?</h2>
           <p>Set up your academy in the time it takes to plan tomorrow's session.</p>
           <div className="lp-cta-actions">
             <Link to="/home" className="lp-btn lp-btn-dark">Start free trial</Link>
             <a href="#pricing" className="lp-btn lp-btn-outline-lt">Compare plans</a>
           </div>
-        </div>
+        </Reveal>
       </section>
 
       <footer className="lp-footer">
