@@ -76,7 +76,7 @@ function isEligible(student, year, month, attendanceByStudent, sport, batchLabel
 
 export default function HomeTab() {
   const { visibleStudents, visibleSports, visibleBatches } = useAcademyData();
-  const { academyId } = useAuth();
+  const { academyId, isAdmin } = useAuth();
   const today = new Date();
   const [month, setMonth] = useState(today.getMonth());
   const [year, setYear] = useState(today.getFullYear());
@@ -331,7 +331,7 @@ export default function HomeTab() {
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
       <div style={{ marginBottom: 14 }}>
-        <div className="section-title" style={{ marginBottom: 10 }}>📈 Dashboard</div>
+        <div className="section-title" style={{ marginBottom: 10 }}>Dashboard</div>
         <div className="my-nav">
           <button className="my-nav-btn yr" onClick={() => nav('year', -1)} title="Previous Year">&lt;&lt;</button>
           <button className="my-nav-btn" onClick={() => nav('month', -1)} title="Previous Month">&lt;</button>
@@ -361,8 +361,11 @@ export default function HomeTab() {
             onClick: () => setDrilldown({ title: 'Active Students', icon: '👥', students: activeStudents }) },
           { key: 'joined', color: 'stat-orange', icon: '🆕', label: 'Joined', value: joinedStudents.length, caption: '',
             onClick: () => setDrilldown({ title: 'Joined This Month', icon: '🆕', students: joinedStudents }) },
-          { key: 'collected', color: 'stat-green', icon: '✅', label: 'Fees Collected', value: `₹${collected.toLocaleString()}`, caption: 'Incl. partial payments',
-            onClick: () => setDrilldown({ title: 'Fees Collected', icon: '✅', students: feeStudentList(collectedFees) }) },
+          // Fees Collected is admin-only — staff should not see money totals.
+          ...(isAdmin ? [
+            { key: 'collected', color: 'stat-green', icon: '✅', label: 'Fees Collected', value: `₹${collected.toLocaleString()}`, caption: 'Incl. partial payments',
+              onClick: () => setDrilldown({ title: 'Fees Collected', icon: '✅', students: feeStudentList(collectedFees) }) },
+          ] : []),
           { key: 'pending', color: 'stat-red', icon: '⚠️', label: 'Fee Pending', value: pending, caption: `Dues through ${cutoffLabel}`,
             onClick: () => setDrilldown({ title: `Fee Pending (through ${cutoffLabel})`, icon: '⚠️', rows: pendingFeeRows }) },
         ].map(tile => (
@@ -394,7 +397,7 @@ export default function HomeTab() {
       <div className="card" style={{ marginTop: 10, padding: '12px 12px 8px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 13.5, fontWeight: 800 }}>
-            {chartMode === 'attendance' ? '📊 Attendance' : '📈 Strength'} · <span style={{ color: 'var(--gray)', fontWeight: 600 }}>{monthLabel}</span>
+            {chartMode === 'attendance' ? 'Attendance' : 'Strength'} · <span style={{ color: 'var(--gray)', fontWeight: 600 }}>{monthLabel}</span>
           </div>
           <div style={{ display: 'flex', gap: 2, background: 'var(--royal)', borderRadius: 8, padding: 2 }}>
             {['attendance', 'strength'].map(m => (
