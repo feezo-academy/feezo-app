@@ -77,7 +77,7 @@ function TimePicker12({ value, onChange, accentColor }) {
 }
 
 export default function ClassLogPage() {
-  const { academyId, isAdmin, appUser, assignedSports, assignedBatches } = useAuth();
+  const { academyId, isAdmin, appUser, assignedSports, assignedBatches, canExport } = useAuth();
   const { visibleSports, visibleBatches } = useAcademyData();
 
   const [entries, setEntries] = useState([]);
@@ -259,8 +259,12 @@ export default function ClassLogPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 6, flexWrap: 'wrap' }}>
         <div className="section-title" style={{ marginBottom: 0 }}>📋 Activity Log</div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn" style={{ background: 'var(--gold)', color: '#fff', fontSize: 11, padding: '7px 10px' }} onClick={handleExportPdf}>PDF</button>
-          <button className="btn" style={{ background: '#16a34a', color: '#fff', fontSize: 11, padding: '7px 10px' }} onClick={handleExportXlsx}>XL</button>
+          {canExport && (
+            <>
+              <button className="btn" style={{ background: 'var(--gold)', color: '#fff', fontSize: 11, padding: '7px 10px' }} onClick={handleExportPdf}>PDF</button>
+              <button className="btn" style={{ background: '#16a34a', color: '#fff', fontSize: 11, padding: '7px 10px' }} onClick={handleExportXlsx}>XL</button>
+            </>
+          )}
           <button className="btn btn-primary" style={{ fontSize: 12, padding: '7px 12px' }} onClick={openAdd}>+ Add</button>
         </div>
       </div>
