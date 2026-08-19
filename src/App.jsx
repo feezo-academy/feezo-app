@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { AcademyDataProvider, useAcademyData } from './context/AcademyDataContext';
+import { PlanProvider } from './context/PlanContext';
 import useSwipeNav, { SWIPE_TABS } from './hooks/useSwipeNav';
 import LoginScreen from './pages/LoginScreen';
 import TopBar from './components/TopBar';
@@ -90,7 +91,9 @@ export default function App() {
 
   return (
     <AcademyDataProvider>
-      <AppShell />
+      <PlanProvider>
+        <AppShell />
+      </PlanProvider>
     </AcademyDataProvider>
   );
 }
