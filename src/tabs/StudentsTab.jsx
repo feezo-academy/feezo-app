@@ -48,6 +48,7 @@ export default function StudentsTab() {
   const [sortBy, setSortBy] = useState('roll_asc');
   const [selected, setSelected] = useState(new Set());
   const [showAdd, setShowAdd] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'dropped' — toggled by the counter pills
   const [showImport, setShowImport] = useState(false);
   const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
@@ -138,17 +139,31 @@ export default function StudentsTab() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div className="section-title" style={{ marginBottom: 0, whiteSpace: 'nowrap' }}>👥 Students</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, background: 'var(--card2)', color: 'var(--gray)' }}>
+            <button
+              onClick={() => setStatusFilter(f => f === 'active' ? 'all' : 'active')}
+              style={{
+                fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, cursor: 'pointer',
+                border: statusFilter === 'active' ? '1.5px solid var(--gray)' : '1.5px solid transparent',
+                background: 'var(--card2)', color: 'var(--gray)',
+              }}
+            >
               {(sportFilter || batchFilter || search)
                 ? `${activeList.length} active of ${visibleStudents.filter(s => !s.banned).length}`
                 : `${visibleStudents.filter(s => !s.banned).length} active`}
-            </div>
+            </button>
             {visibleStudents.some(s => s.banned) && (
-              <div style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, background: 'rgba(220,38,38,.12)', color: '#ef4444' }}>
+              <button
+                onClick={() => setStatusFilter(f => f === 'dropped' ? 'all' : 'dropped')}
+                style={{
+                  fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, cursor: 'pointer',
+                  border: statusFilter === 'dropped' ? '1.5px solid #ef4444' : '1.5px solid transparent',
+                  background: 'rgba(220,38,38,.12)', color: '#ef4444',
+                }}
+              >
                 {(sportFilter || batchFilter || search)
                   ? `${droppedList.length} dropped of ${visibleStudents.filter(s => s.banned).length}`
                   : `${visibleStudents.filter(s => s.banned).length} dropped`}
-              </div>
+              </button>
             )}
           </div>
         </div>
@@ -239,8 +254,10 @@ export default function StudentsTab() {
       )}
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90, marginTop: 4 }}>
-        {filtered.length === 0 && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 30 }}>No students found.</div>}
-        {activeList.map(s => (
+        {(statusFilter === 'active' ? activeList.length === 0
+          : statusFilter === 'dropped' ? droppedList.length === 0
+          : filtered.length === 0) && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 30 }}>No students found.</div>}
+        {statusFilter !== 'dropped' && activeList.map(s => (
           <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8, cursor: 'pointer' }}
             onClick={(e) => { if (e.target.type !== 'checkbox') setDetailStudent(s); }}>
             <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id, 'active')} onClick={e => e.stopPropagation()} />
@@ -252,7 +269,7 @@ export default function StudentsTab() {
           </div>
         ))}
 
-        {droppedList.length > 0 && (
+        {statusFilter !== 'active' && droppedList.length > 0 && (
           <>
             <div style={{ textAlign: 'center', fontSize: 12, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.6px', margin: '18px 0 10px' }}>
               — Dropout / Banned Students —
