@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/auditLog';
+import { exportStudentProfilePdf } from '../lib/exporters';
 import AchievementsSection from './AchievementsSection';
 
 function calcAge(dobIso) {
@@ -39,11 +40,28 @@ function ContactRow({ label, value }) {
   );
 }
 
-export default function StudentDetailModal({ student, academyId, isAdmin, canViewContact, onClose, onEdit, onChanged }) {
+export default function StudentDetailModal({ student, academyId, isAdmin, canViewContact, canExport, onClose, onEdit, onChanged }) {
   const { appUser } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const isBanned = !!student.banned;
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const [{ data: academy }, { data: achievements }] = await Promise.all([
+        supabase.from('academies').select('name, logo_url').eq('id', academyId).maybeSingle(),
+        supabase.from('achievements').select('*').eq('student_id', student.id).eq('academy_id', academyId),
+      ]);
+      await exportStudentProfilePdf(student, academy || {}, achievements || [], canViewContact);
+      logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `Downloaded profile PDF for ${student.name}` });
+    } catch (e) {
+      alert(e.message || 'Failed to generate PDF.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const toggleBan = async () => {
     setBusy(true);
@@ -110,6 +128,23 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
           <Row label="School" value={student.address} />
           <Row label="Joined" value={student.join_date} />
 
+          {(student.height || student.weight || student.bmi) && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ color: 'var(--gray)', fontSize: 11 }}>Height</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{student.height ? `${student.height} cm` : '—'}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--gray)', fontSize: 11 }}>Weight</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{student.weight ? `${student.weight} kg` : '—'}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--gray)', fontSize: 11 }}>BMI</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{student.bmi || '—'}</div>
+              </div>
+            </div>
+          )}
+
           <div style={{ padding: '10px 0' }}>
             <div style={{ color: 'var(--gray)', fontSize: 12, marginBottom: 6 }}>🏆 Sports Enrolled</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -122,8 +157,16 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
             </div>
           </div>
 
-          <AchievementsSection studentId={student.id} academyId={academyId} canEdit={isAdmin} />
+          <AchievementsSection studentId={student.id} academyId={academyId} canEdit={true} />
         </div>
+
+        {canExport && (
+          <div style={{ padding: '0 16px 12px', flexShrink: 0 }}>
+            <button className="btn btn-outline btn-sm" style={{ width: '100%', justifyContent: 'center' }} disabled={downloading} onClick={handleDownload}>
+              {downloading ? 'Generating…' : '⬇️ Download Profile PDF'}
+            </button>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 6, padding: 16, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
           <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={busy} onClick={() => { onClose(); onEdit(student); }}>✏️ Edit</button>

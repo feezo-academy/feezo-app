@@ -344,6 +344,7 @@ export default function StudentsTab() {
           academyId={academyId}
           isAdmin={isAdmin}
           canViewContact={canViewContact}
+          canExport={canExport}
           onClose={() => setDetailStudent(null)}
           onEdit={(s) => setEditStudent(s)}
           onChanged={refresh}
