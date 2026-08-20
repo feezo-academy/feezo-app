@@ -109,6 +109,7 @@ export default function StudentsTab() {
   };
 
   const bulkDelete = async () => {
+    if (!isAdmin) return; // UI already hides this from staff; guard kept in case of direct calls
     if (!selected.size) return;
     if (!confirm(`Delete ${selected.size} student(s)?`)) return;
     await supabase.from('students').delete().in('id', Array.from(selected));
@@ -141,17 +142,15 @@ export default function StudentsTab() {
         <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {canExport && <button className="btn btn-gold btn-sm" onClick={() => exportStudentsPdf(filtered)}>PDF</button>}
           {canExport && <button className="btn btn-success btn-sm" onClick={() => exportStudentsXlsx(filtered)}>XL</button>}
-          {isAdmin && <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>}
-          {isAdmin && (
-            <LimitGatedButton
-              resource="students"
-              currentCount={students.length}
-              onClick={() => setShowAdd(true)}
-              className="btn btn-primary btn-sm"
-            >
-              + Add
-            </LimitGatedButton>
-          )}
+          <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>
+          <LimitGatedButton
+            resource="students"
+            currentCount={students.length}
+            onClick={() => setShowAdd(true)}
+            className="btn btn-primary btn-sm"
+          >
+            + Add
+          </LimitGatedButton>
         </div>
       </div>
 
@@ -188,10 +187,10 @@ export default function StudentsTab() {
         </div>
       </div>
 
-      {isAdmin && selected.size > 0 && (
+      {selected.size > 0 && (
         <div style={{ background: 'var(--accent)', border: '1px solid var(--accent2)', borderRadius: 10, padding: '7px 8px', marginBottom: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>{selected.size} selected</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isAdmin ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: 4 }}>
             <button
               onClick={selectAll}
               disabled={selected.size === (selectedGroup === 'dropped' ? droppedList.length : activeList.length)}
@@ -213,13 +212,15 @@ export default function StudentsTab() {
             >
               {selectedGroup === 'dropped' ? '↩️ Restore' : '✏️ Edit'}
             </button>
-            <button
-              onClick={bulkDelete}
-              disabled={selected.size === 0}
-              style={{ minWidth: 0, fontSize: 10, fontWeight: 700, padding: '6px 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: '1.5px solid #000', borderRadius: 6, background: 'var(--red)', color: '#fff', opacity: selected.size === 0 ? 0.5 : 1 }}
-            >
-              🗑️ Del
-            </button>
+            {isAdmin && (
+              <button
+                onClick={bulkDelete}
+                disabled={selected.size === 0}
+                style={{ minWidth: 0, fontSize: 10, fontWeight: 700, padding: '6px 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: '1.5px solid #000', borderRadius: 6, background: 'var(--red)', color: '#fff', opacity: selected.size === 0 ? 0.5 : 1 }}
+              >
+                🗑️ Del
+              </button>
+            )}
           </div>
         </div>
       )}
