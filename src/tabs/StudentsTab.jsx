@@ -349,6 +349,7 @@ export default function StudentsTab() {
           sports={visibleSports}
           batches={visibleBatches}
           existingStudents={visibleStudents}
+          totalStudents={students.length}
           onClose={() => setShowImport(false)}
           onImported={refresh}
         />
