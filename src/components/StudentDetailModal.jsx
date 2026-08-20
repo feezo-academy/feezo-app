@@ -126,7 +126,7 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
         </div>
 
         <div style={{ display: 'flex', gap: 6, padding: 16, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-          {isAdmin && <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={busy} onClick={() => { onClose(); onEdit(student); }}>✏️ Edit</button>}
+          <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={busy} onClick={() => { onClose(); onEdit(student); }}>✏️ Edit</button>
           {!isBanned
             ? <button className="btn btn-warning btn-sm" style={{ flex: 1 }} disabled={busy} onClick={toggleBan}>🚫 Block</button>
             : <button className="btn btn-success btn-sm" style={{ flex: 1 }} disabled={busy} onClick={toggleBan}>✅ Restore</button>}
