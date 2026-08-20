@@ -3,6 +3,9 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { useAuth } from './context/AuthContext';
 import { AcademyDataProvider, useAcademyData } from './context/AcademyDataContext';
 import { PlanProvider } from './context/PlanContext';
+import { LoadingProvider } from './components/LoadingContext';
+import GlobalLoaderOverlay from './components/GlobalLoaderOverlay';
+import CircularLoader from './components/CircularLoader';
 import useSwipeNav, { SWIPE_TABS } from './hooks/useSwipeNav';
 import LoginScreen from './pages/LoginScreen';
 import TopBar from './components/TopBar';
@@ -76,6 +79,7 @@ function AppShell() {
       <BottomNav />
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
       <div className="app-copyright">© 2026 FeeZo Solutions · v3</div>
+      <GlobalLoaderOverlay />
     </div>
   );
 }
@@ -84,7 +88,11 @@ export default function App() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--gray)' }}>Loading…</div>;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+        <CircularLoader label="Signing you in..." />
+      </div>
+    );
   }
 
   if (!user) return <LoginScreen />;
@@ -92,7 +100,9 @@ export default function App() {
   return (
     <AcademyDataProvider>
       <PlanProvider>
-        <AppShell />
+        <LoadingProvider>
+          <AppShell />
+        </LoadingProvider>
       </PlanProvider>
     </AcademyDataProvider>
   );
