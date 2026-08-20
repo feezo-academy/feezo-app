@@ -50,6 +50,8 @@ export default function StudentsTab() {
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [detailStudent, setDetailStudent] = useState(null);
   const [editStudent, setEditStudent] = useState(null);
 
@@ -113,6 +115,19 @@ export default function StudentsTab() {
     if (!selected.size) return;
     if (!confirm(`Delete ${selected.size} student(s)?`)) return;
     await supabase.from('students').delete().in('id', Array.from(selected));
+    setSelected(new Set());
+    refresh();
+  };
+
+  const restoreSelected = async () => {
+    if (!selected.size) return;
+    setRestoring(true);
+    const bannedOn = null;
+    await supabase.from('students')
+      .update({ banned: false, banned_on: bannedOn })
+      .in('id', Array.from(selected));
+    setRestoring(false);
+    setShowRestoreConfirm(false);
     setSelected(new Set());
     refresh();
   };
@@ -206,7 +221,7 @@ export default function StudentsTab() {
               ✕ None
             </button>
             <button
-              onClick={() => setShowBulkEdit(true)}
+              onClick={() => selectedGroup === 'dropped' ? setShowRestoreConfirm(true) : setShowBulkEdit(true)}
               disabled={selected.size === 0}
               style={{ minWidth: 0, fontSize: 10, fontWeight: 700, padding: '6px 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: '1.5px solid #000', borderRadius: 6, background: 'var(--primary, #4f6bed)', color: '#fff', opacity: selected.size === 0 ? 0.5 : 1 }}
             >
@@ -274,6 +289,28 @@ export default function StudentsTab() {
           onClose={() => setShowAdd(false)}
           onSaved={() => { setShowAdd(false); refresh(); }}
         />
+      )}
+
+      {showRestoreConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-end' }}>
+          <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, margin: '0 auto', borderRadius: '20px 20px 0 0', boxShadow: 'var(--shadow)', padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 18 }}>↩️</span>
+              <span style={{ fontWeight: 800, fontSize: 15 }}>Restore {selected.size} student{selected.size === 1 ? '' : 's'}?</span>
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--gray)', marginBottom: 18 }}>
+              {selected.size === 1 ? 'This student' : `These ${selected.size} students`} will be moved back to the Active list.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-outline" style={{ flex: 1, justifyContent: 'center', padding: '10px 0' }} onClick={() => setShowRestoreConfirm(false)} disabled={restoring}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" style={{ flex: 1.4, justifyContent: 'center', padding: '10px 0' }} onClick={restoreSelected} disabled={restoring}>
+                {restoring ? 'Restoring…' : `↩️ Continue`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showBulkEdit && (
