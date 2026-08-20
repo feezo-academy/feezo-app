@@ -625,10 +625,10 @@ export default function AttendanceTab() {
               </button>
             );
           })()}
-          {isAdmin && hasFeature('has_bulk_import') && (
+          {hasFeature('has_bulk_import') && (
             <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>
           )}
-          {isAdmin && !hasFeature('has_bulk_import') && (() => {
+          {!hasFeature('has_bulk_import') && (() => {
             const target = cheapestPlanWithFeature('has_bulk_import');
             return (
               <button

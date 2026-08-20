@@ -708,10 +708,10 @@ export default function FeesTab() {
               </button>
             );
           })()}
-          {isAdmin && hasFeature('has_bulk_import') && (
+          {hasFeature('has_bulk_import') && (
             <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>
           )}
-          {isAdmin && !hasFeature('has_bulk_import') && (() => {
+          {!hasFeature('has_bulk_import') && (() => {
             const target = cheapestPlanWithFeature('has_bulk_import');
             return (
               <button
@@ -904,6 +904,7 @@ export default function FeesTab() {
           sportFilter={sportFilter}
           batchFilter={batchFilter}
           collectedBy={collectedBy}
+          isAdmin={isAdmin}
           onClose={() => setShowImport(false)}
           onImported={loadFees}
         />
