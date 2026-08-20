@@ -53,6 +53,20 @@ function calcAge(dobIso) {
   return age;
 }
 
+// Compares numeric-ish fields (height/weight/bmi) regardless of whether the
+// value comes back from Supabase as a string or a number (depends on the
+// column type) — a plain === here would flag every row as "changed" purely
+// because of a type mismatch, not an actual data difference.
+function numEq(a, b) {
+  const blankA = a === '' || a === null || a === undefined;
+  const blankB = b === '' || b === null || b === undefined;
+  if (blankA && blankB) return true;
+  if (blankA || blankB) return false;
+  const na = Number(a), nb = Number(b);
+  if (isNaN(na) || isNaN(nb)) return String(a) === String(b);
+  return Math.abs(na - nb) < 0.05;
+}
+
 function calcBmi(heightCm, weightKg) {
   const h = parseFloat(heightCm);
   const w = parseFloat(weightKg);
@@ -263,9 +277,9 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         effContact2 === (m.contact2 || '') &&
         effAddress === (m.address || '') &&
         effGender === (m.gender || '') &&
-        effHeight === (m.height || '') &&
-        effWeight === (m.weight || '') &&
-        effBmi === (m.bmi || '') &&
+        numEq(effHeight, m.height || '') &&
+        numEq(effWeight, m.weight || '') &&
+        numEq(effBmi, m.bmi || '') &&
         effBatchKey === (m.batch || '') &&
         enrollmentExists
       );
