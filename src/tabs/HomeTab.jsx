@@ -99,10 +99,18 @@ export default function HomeTab() {
     return `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   });
 
+  // f.month is stored as ISO "YYYY-MM" (confirmed against live data), so fee
+  // rows can be matched to the browsed month with an exact, indexable
+  // comparison — no text pattern matching needed.
+  const monthLabelShort = new Date(year, month, 1).toLocaleDateString([], { month: 'short', year: 'numeric' });
+  const monthIso = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const feeMatchesMonth = (f) => f.month === monthIso;
+
   // Fees + attendance fetched together under one loader so the ring shows
   // once and hides once, instead of flickering twice for two separate calls.
-  // Attendance is fetched per academy (not scoped to the browsed month) so
-  // Fee Pending can look back across every past month, same as FeesTab.
+  // Both are now scoped to the browsed month only (not the academy's full
+  // history) — attendance via a date range, fees via an exact month match —
+  // and refetch whenever month/year changes.
   // IMPORTANT: sport + batch are fetched too — without them there's no way
   // to scope attendance/eligibility to a specific enrollment, which was
   // causing multi-sport students' records to bleed across sport filters.
@@ -111,9 +119,16 @@ export default function HomeTab() {
       if (!academyId) { setFees([]); setAllAttendance([]); return; }
       showLoader('Loading dashboard...');
       try {
+        const monthStartIso = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        const rangeEndIso = isFutureMonth
+          ? monthStartIso
+          : `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
         const [feesRes, attendanceRes] = await Promise.all([
-          supabase.from('fees').select('*').eq('academy_id', academyId),
-          supabase.from('attendance').select('date,status,student_id,sport,batch').eq('academy_id', academyId),
+          supabase.from('fees').select('*').eq('academy_id', academyId).eq('month', monthIso),
+          supabase.from('attendance').select('date,status,student_id,sport,batch')
+            .eq('academy_id', academyId)
+            .gte('date', monthStartIso)
+            .lte('date', rangeEndIso),
         ]);
         setFees(feesRes.data || []);
         setAllAttendance(attendanceRes.data || []);
@@ -121,7 +136,7 @@ export default function HomeTab() {
         hideLoader();
       }
     })();
-  }, [academyId]);
+  }, [academyId, month, year]);
 
   // Flatten each student's enrollments into one row per sport+batch — same
   // pattern as AttendanceTab/FeesTab — so a student in two sports/batches is
@@ -203,18 +218,9 @@ export default function HomeTab() {
     return j && j.getMonth() === month && j.getFullYear() === year;
   });
 
-  // Fees scoped to the selected month where possible; f.month is free-text so
-  // we match it loosely against a few common formats used when fees were logged.
-  const monthLabelShort = new Date(year, month, 1).toLocaleDateString([], { month: 'short', year: 'numeric' });
-  const monthLabelLong = new Date(year, month, 1).toLocaleDateString([], { month: 'long', year: 'numeric' });
-  const monthIso = `${year}-${String(month + 1).padStart(2, '0')}`;
-  const feeMatchesMonth = (f) => {
-    if (!f.month) return false;
-    const m = String(f.month).toLowerCase();
-    return m.includes(monthLabelShort.toLowerCase()) || m.includes(monthLabelLong.toLowerCase()) || m.includes(monthIso);
-  };
-  // Scoped to the enrollments currently in view (student+sport+batch), not
-  // just student_id — so a fee for a sport you've filtered out doesn't leak in.
+  // Fees scoped to the selected month, matched server-side already (see
+  // fetch effect above) via an exact month equality; this local filter is
+  // kept as a defensive no-op in case a fee row is ever missing a month.
   const scopedFeesAll = fees.filter(f => enrollmentKeySet.has(keyFor(f.student_id, f.sport, f.batch_label)));
   const scopedFeesMonth = scopedFeesAll.filter(feeMatchesMonth);
   const scopedFees = scopedFeesMonth.length > 0 ? scopedFeesMonth : scopedFeesAll; // fall back if month text doesn't match anything
@@ -231,8 +237,8 @@ export default function HomeTab() {
     !f.is_scholarship && (parseInt(f.amount, 10) || 0) > 0 && activeStudentIdSet.has(f.student_id));
   const collected = collectedFees.reduce((s, f) => s + (parseInt(f.amount, 10) || 0), 0);
 
-  // --- Fee Pending: active students only, dues strictly BEFORE the browsed
-  // month (e.g. browsing July shows dues through June).
+  // --- Fee Pending: active students only, dues for the currently browsed
+  // month.
   //
   // Fee rows are only ever created once a payment is actually recorded — an
   // unpaid month has NO row in `fees` at all. So "pending" can't be read off
@@ -241,14 +247,12 @@ export default function HomeTab() {
   // attendance record that specific sport+batch that month, and no fully
   // paid fee row. A PARTIALLY paid entry still counts as pending — it stays
   // in this list until feeStatus() reports 'paid'. ---
-  let cutM = month - 1, cutY = year;
-  if (cutM < 0) { cutM = 11; cutY--; }
-  const cutoffKey = `${cutY}-${String(cutM + 1).padStart(2, '0')}`;
-  const cutoffLabel = new Date(cutY, cutM, 1).toLocaleDateString([], { month: 'short', year: 'numeric' });
 
   // { 'YYYY-MM': { studentId: [attendance rows] } } — scoped to the students
   // currently in view (sport/batch filters); each row still carries its own
-  // sport/batch so isEligible() can match per-enrollment.
+  // sport/batch so isEligible() can match per-enrollment. Attendance is now
+  // fetched for the browsed month only, so this will typically hold a
+  // single month's key.
   const attendanceByStudentByMonth = useMemo(() => {
     const out = {};
     const studentIds = new Set(students.map(s => s.id));
@@ -273,34 +277,27 @@ export default function HomeTab() {
 
   const pendingFeeRows = useMemo(() => {
     const rows = [];
-    Object.keys(attendanceByStudentByMonth)
-      .filter(mk => mk <= cutoffKey)
-      .sort()
-      .forEach(mk => {
-        const [yy, mm] = mk.split('-').map(Number);
-        const attByStudent = attendanceByStudentByMonth[mk];
-        const monthShort = new Date(yy, mm - 1, 1).toLocaleDateString([], { month: 'short' });
-        filteredEnrollmentRows.forEach(r => {
-          const s = r.student;
-          if (!activeStudents.some(a => a.id === s.id)) return;
-          if (!isEligible(s, yy, mm, attByStudent, r.sport, r.batchLabel)) return;
-          const fee = feeMap[`${s.id}|${norm(r.sport)}|${norm(r.batchLabel)}|${mk}`] || null;
-          const st = feeStatus(fee);
-          if (st === 'paid') return; // fully settled (incl. scholarship) — not pending
-          const due = fee?.amount_due ? parseInt(fee.amount_due, 10) : null;
-          const paidSoFar = fee?.amount ? parseInt(fee.amount, 10) : 0;
-          const remaining = due != null ? Math.max(due - paidSoFar, 0) : null;
-          rows.push({
-            id: `${s.id}|${r.sport}|${r.batchLabel}|${mk}`,
-            name: s.name, contact: s.contact || '',
-            sport: r.sport, batchLabel: r.batchLabel,
-            monthKey: mk, monthShort,
-            partial: st === 'partial', due, paidSoFar, remaining,
-          });
-        });
+    const attByStudent = attendanceByStudentByMonth[monthIso] || {};
+    filteredEnrollmentRows.forEach(r => {
+      const s = r.student;
+      if (!activeStudents.some(a => a.id === s.id)) return;
+      if (!isEligible(s, year, month + 1, attByStudent, r.sport, r.batchLabel)) return;
+      const fee = feeMap[`${s.id}|${norm(r.sport)}|${norm(r.batchLabel)}|${monthIso}`] || null;
+      const st = feeStatus(fee);
+      if (st === 'paid') return; // fully settled (incl. scholarship) — not pending
+      const due = fee?.amount_due ? parseInt(fee.amount_due, 10) : null;
+      const paidSoFar = fee?.amount ? parseInt(fee.amount, 10) : 0;
+      const remaining = due != null ? Math.max(due - paidSoFar, 0) : null;
+      rows.push({
+        id: `${s.id}|${r.sport}|${r.batchLabel}|${monthIso}`,
+        name: s.name, contact: s.contact || '',
+        sport: r.sport, batchLabel: r.batchLabel,
+        monthKey: monthIso, monthShort: monthLabelShort,
+        partial: st === 'partial', due, paidSoFar, remaining,
       });
+    });
     return rows;
-  }, [attendanceByStudentByMonth, filteredEnrollmentRows, activeStudents, feeMap, cutoffKey]);
+  }, [attendanceByStudentByMonth, filteredEnrollmentRows, activeStudents, feeMap, monthIso, year, month, monthLabelShort]);
 
   const pending = pendingFeeRows.length;
 
@@ -375,8 +372,8 @@ export default function HomeTab() {
             { key: 'collected', color: 'stat-green', icon: '✅', label: 'Fees Collected', value: `₹${collected.toLocaleString()}`, caption: 'Incl. partial payments',
               onClick: () => setDrilldown({ title: 'Fees Collected', icon: '✅', students: feeStudentList(collectedFees) }) },
           ] : []),
-          { key: 'pending', color: 'stat-red', icon: '⚠️', label: 'Fee Pending', value: pending, caption: `Dues through ${cutoffLabel}`,
-            onClick: () => setDrilldown({ title: `Fee Pending (through ${cutoffLabel})`, icon: '⚠️', rows: pendingFeeRows }) },
+          { key: 'pending', color: 'stat-red', icon: '⚠️', label: 'Fee Pending', value: pending, caption: monthLabel,
+            onClick: () => setDrilldown({ title: `Fee Pending (${monthLabel})`, icon: '⚠️', rows: pendingFeeRows }) },
         ].map(tile => (
           <div
             key={tile.key}
