@@ -138,11 +138,11 @@ export default function StudentsTab() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div className="section-title" style={{ marginBottom: 0, whiteSpace: 'nowrap' }}>👥 Students</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             <button
               onClick={() => setStatusFilter(f => f === 'active' ? 'all' : 'active')}
               style={{
-                fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, cursor: 'pointer',
+                fontSize: 9.5, fontWeight: 600, padding: '1px 6px', borderRadius: 10, cursor: 'pointer', lineHeight: 1.6,
                 border: statusFilter === 'active' ? '1.5px solid var(--gray)' : '1.5px solid transparent',
                 background: 'var(--card2)', color: 'var(--gray)',
               }}
@@ -155,7 +155,7 @@ export default function StudentsTab() {
               <button
                 onClick={() => setStatusFilter(f => f === 'dropped' ? 'all' : 'dropped')}
                 style={{
-                  fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 12, cursor: 'pointer',
+                  fontSize: 9.5, fontWeight: 600, padding: '1px 6px', borderRadius: 10, cursor: 'pointer', lineHeight: 1.6,
                   border: statusFilter === 'dropped' ? '1.5px solid #ef4444' : '1.5px solid transparent',
                   background: 'rgba(220,38,38,.12)', color: '#ef4444',
                 }}
@@ -167,15 +167,16 @@ export default function StudentsTab() {
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {canExport && <button className="btn btn-gold btn-sm" onClick={() => exportStudentsPdf(filtered)}>PDF</button>}
-          {canExport && <button className="btn btn-success btn-sm" onClick={() => exportStudentsXlsx(filtered)}>XL</button>}
-          <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'nowrap', justifyContent: 'flex-end' }}>
+          {canExport && <button className="btn btn-gold btn-sm" style={{ padding: '5px 8px', fontSize: 11 }} onClick={() => exportStudentsPdf(filtered)}>PDF</button>}
+          {canExport && <button className="btn btn-success btn-sm" style={{ padding: '5px 8px', fontSize: 11 }} onClick={() => exportStudentsXlsx(filtered)}>XL</button>}
+          <button className="btn btn-outline btn-sm" style={{ padding: '5px 8px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={() => setShowImport(true)}>⬆️ Import</button>
           <LimitGatedButton
             resource="students"
             currentCount={students.length}
             onClick={() => setShowAdd(true)}
             className="btn btn-primary btn-sm"
+            style={{ padding: '5px 8px', fontSize: 11, whiteSpace: 'nowrap' }}
           >
             + Add
           </LimitGatedButton>
