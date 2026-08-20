@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { useMemo, useState } from 'react';
 
-export default function StatDrilldownModal({ title, icon, students = [], rows, onClose }) {
+export default function StatDrilldownModal({ title, icon, students = [], rows, showContact = true, onClose }) {
   const isRowMode = Array.isArray(rows);
   const [sortField, setSortField] = useState('month');
   const [sortDir, setSortDir] = useState('asc');
@@ -81,14 +81,16 @@ export default function StatDrilldownModal({ title, icon, students = [], rows, o
                   <div style={{ fontWeight: 700, color: 'var(--accent2)', flexShrink: 0, width: 32, textAlign: 'center' }}>
                     {r.monthShort}
                   </div>
-                  {r.contact ? (
-                    <a href={`tel:${r.contact}`} onClick={e => e.stopPropagation()}
-                      style={{ color: 'var(--gray)', fontSize: 12.5, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
-                      📞 {r.contact}
-                    </a>
-                  ) : (
-                    <span style={{ fontSize: 11, color: 'var(--gray)', flexShrink: 0 }}>No contact</span>
-                  )}
+                  {showContact ? (
+                    r.contact ? (
+                      <a href={`tel:${r.contact}`} onClick={e => e.stopPropagation()}
+                        style={{ color: 'var(--gray)', fontSize: 12.5, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
+                        📞 {r.contact}
+                      </a>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--gray)', flexShrink: 0 }}>No contact</span>
+                    )
+                  ) : null}
                 </div>
                 {(r.sport || r.partial) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--gray)' }}>
@@ -112,14 +114,16 @@ export default function StatDrilldownModal({ title, icon, students = [], rows, o
                     {s.extra ? (s.sport ? ' · ' : '') + s.extra : ''}
                   </div>
                 </div>
-                {s.contact ? (
-                  <a href={`tel:${s.contact}`} onClick={e => e.stopPropagation()}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--accent2)', color: '#fff', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}>
-                    📞 {s.contact}
-                  </a>
-                ) : (
-                  <span style={{ fontSize: 11, color: 'var(--gray)' }}>No contact</span>
-                )}
+                {showContact ? (
+                  s.contact ? (
+                    <a href={`tel:${s.contact}`} onClick={e => e.stopPropagation()}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--accent2)', color: '#fff', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}>
+                      📞 {s.contact}
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: 11, color: 'var(--gray)' }}>No contact</span>
+                  )
+                ) : null}
               </div>
             ))
           )}
