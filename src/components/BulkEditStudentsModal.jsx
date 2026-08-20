@@ -28,7 +28,7 @@ export default function BulkEditStudentsModal({ students, selectedIds, allStuden
   const [regenerateRoll, setRegenerateRoll] = useState(false);
   // In active mode this checkbox drops the selected students; in dropped
   // mode it restores them back to active instead.
-  const [changeStatus, setChangeStatus] = useState(false);
+  const [changeStatus, setChangeStatus] = useState(isDroppedMode);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
