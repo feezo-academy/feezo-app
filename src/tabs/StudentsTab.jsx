@@ -230,9 +230,7 @@ export default function StudentsTab() {
         {activeList.map(s => (
           <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8, cursor: 'pointer' }}
             onClick={(e) => { if (e.target.type !== 'checkbox') setDetailStudent(s); }}>
-            {isAdmin && (
-              <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id, 'active')} onClick={e => e.stopPropagation()} />
-            )}
+            <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id, 'active')} onClick={e => e.stopPropagation()} />
             <RollBadge rollNo={s.roll_no} />
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
@@ -252,9 +250,7 @@ export default function StudentsTab() {
                 background: 'rgba(220,38,38,.05)', border: '1px solid rgba(220,38,38,.25)',
               }}
                 onClick={(e) => { if (e.target.type !== 'checkbox') setDetailStudent(s); }}>
-                {isAdmin && (
-                  <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id, 'dropped')} onClick={e => e.stopPropagation()} />
-                )}
+                <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id, 'dropped')} onClick={e => e.stopPropagation()} />
                 <RollBadge rollNo={s.roll_no} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
