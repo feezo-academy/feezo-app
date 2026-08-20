@@ -340,8 +340,8 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
   };
 
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999 }}>
-      <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, margin: '0 auto', height: '100%', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, maxHeight: '85vh', borderRadius: 14, margin: '0 auto', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow)', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 18px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--card2)' }}>
           <div style={{ fontWeight: 800, fontSize: 16 }}>⬆️ Import Students</div>
           <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', cursor: 'pointer' }}>✕</button>
