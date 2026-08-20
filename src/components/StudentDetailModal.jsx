@@ -2,9 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { useAcademyData } from '../context/AcademyDataContext';
 import { logActivity } from '../lib/auditLog';
-import { exportStudentProfilePdf } from '../lib/exporters';
 import AchievementsSection from './AchievementsSection';
 
 function calcAge(dobIso) {
@@ -16,14 +14,6 @@ function calcAge(dobIso) {
   const mDiff = today.getMonth() - d.getMonth();
   if (mDiff < 0 || (mDiff === 0 && today.getDate() < d.getDate())) age--;
   return age;
-}
-
-function calcBMI(heightCm, weightKg) {
-  const h = parseFloat(heightCm);
-  const w = parseFloat(weightKg);
-  if (!h || !w || h <= 0 || w <= 0) return '';
-  const m = h / 100;
-  return (w / (m * m)).toFixed(1);
 }
 
 function Row({ label, value }) {
@@ -51,27 +41,17 @@ function ContactRow({ label, value }) {
 
 export default function StudentDetailModal({ student, academyId, isAdmin, canViewContact, onClose, onEdit, onChanged }) {
   const { appUser } = useAuth();
-  const { academy } = useAcademyData();
   const [busy, setBusy] = useState(false);
-  const [downloading, setDownloading] = useState(false);
 
   const isBanned = !!student.banned;
-
-  const downloadProfile = async () => {
-    setDownloading(true);
-    try {
-      const { data } = await supabase.from('achievements').select('*')
-        .eq('student_id', student.id).eq('academy_id', academyId).order('achievement_date', { ascending: false });
-      await exportStudentProfilePdf(student, academy || {}, data || [], canViewContact);
-    } finally {
-      setDownloading(false);
-    }
-  };
 
   const toggleBan = async () => {
     setBusy(true);
     const banned = !isBanned;
-    await supabase.from('students').update({ banned, banned_on: banned ? new Date().toISOString() : null }).eq('id', student.id);
+    const bannedOn = banned
+      ? (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })()
+      : null;
+    await supabase.from('students').update({ banned, banned_on: bannedOn }).eq('id', student.id);
     setBusy(false);
     logActivity({
       academyId, actorId: appUser?.id, actorName: appUser?.name,
@@ -82,6 +62,7 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
   };
 
   const doDelete = async () => {
+    if (!isAdmin) return; // UI already hides this from staff; guard kept in case of direct calls
     if (!confirm(`Permanently delete "${student.name}"? Attendance & fee history will remain but be orphaned.`)) return;
     setBusy(true);
     await supabase.from('students').delete().eq('id', student.id);
@@ -99,14 +80,8 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
             <span style={{ fontSize: 18 }}>👤</span>
             <span style={{ fontWeight: 800, fontSize: 16 }}>Student Details</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={downloadProfile} disabled={downloading} aria-label="Download Profile"
-              style={{ height: 30, padding: '0 12px', borderRadius: 15, background: 'var(--accent2)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
-              ⬇️ {downloading ? 'Preparing…' : 'Download'}
-            </button>
-            <button onClick={onClose} aria-label="Close"
-              style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 15, color: 'var(--gray)' }}>✕</button>
-          </div>
+          <button onClick={onClose} aria-label="Close"
+            style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 15, color: 'var(--gray)' }}>✕</button>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '18px' }}>
@@ -128,9 +103,6 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
           <Row label="Age" value={student.dob ? calcAge(student.dob) : student.age} />
           <Row label="Date of Birth" value={student.dob} />
           <Row label="Gender" value={student.gender} />
-          <Row label="Height" value={student.height ? `${student.height} cm` : ''} />
-          <Row label="Weight" value={student.weight ? `${student.weight} kg` : ''} />
-          <Row label="BMI" value={calcBMI(student.height, student.weight)} />
           <Row label="Parent / Guardian" value={student.parent} />
           <ContactRow label="Contact 1" value={canViewContact ? student.contact : null} />
           <ContactRow label="Contact 2" value={canViewContact ? student.contact2 : null} />
@@ -141,11 +113,12 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
           <div style={{ padding: '10px 0' }}>
             <div style={{ color: 'var(--gray)', fontSize: 12, marginBottom: 6 }}>🏆 Sports Enrolled</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {(student.enrollments || []).map((en, i) => (
-                <span key={i} className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, alignSelf: 'flex-start' }}>
-                  {en.sport} · {en.batchLabel}
-                </span>
-              ))}
+              <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, alignSelf: 'flex-start' }}>
+                Sport: {student.sport}
+              </span>
+              <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, alignSelf: 'flex-start' }}>
+                Batch: {student.batchLabel}
+              </span>
             </div>
           </div>
 
@@ -153,11 +126,11 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
         </div>
 
         <div style={{ display: 'flex', gap: 6, padding: 16, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-          <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={busy} onClick={() => { onClose(); onEdit(student); }}>✏️ Edit</button>
+          {isAdmin && <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={busy} onClick={() => { onClose(); onEdit(student); }}>✏️ Edit</button>}
           {!isBanned
             ? <button className="btn btn-warning btn-sm" style={{ flex: 1 }} disabled={busy} onClick={toggleBan}>🚫 Block</button>
             : <button className="btn btn-success btn-sm" style={{ flex: 1 }} disabled={busy} onClick={toggleBan}>✅ Restore</button>}
-          <button className="btn btn-danger btn-sm" style={{ flex: 1 }} disabled={busy} onClick={doDelete}>🗑️ Delete</button>
+          {isAdmin && <button className="btn btn-danger btn-sm" style={{ flex: 1 }} disabled={busy} onClick={doDelete}>🗑️ Delete</button>}
         </div>
       </div>
     </div>,
