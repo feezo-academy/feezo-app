@@ -174,7 +174,7 @@ export async function exportStudentProfilePdf(student, academy = {}, achievement
 
   // ---- Personal Info ----
   const age = student.dob ? calcAge(student.dob) : student.age;
-  const bmi = calcBMI(student.height, student.weight);
+  const bmi = student.bmi || calcBMI(student.height, student.weight); // fall back to live calc for older rows saved before bmi was stored
   autoTable(doc, {
     startY: y,
     theme: 'plain',
