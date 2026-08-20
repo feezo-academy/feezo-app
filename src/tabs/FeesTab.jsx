@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { usePlan } from '../context/PlanContext';
@@ -431,6 +431,7 @@ export default function FeesTab() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [fees, setFees] = useState([]);
+  const [txnCounts, setTxnCounts] = useState({}); // student_id -> total payment count, ALL months (needed for sequential txn IDs)
   const [attendance, setAttendance] = useState([]); // {student_id, status, date}
   const [loading, setLoading] = useState(false);
 
@@ -438,22 +439,62 @@ export default function FeesTab() {
   const [entryModal, setEntryModal] = useState(null); // { student, monthKey, monthLabel, sport, fee }
   const [showImport, setShowImport] = useState(false);
 
-  // Fee rows are loaded once per academy and kept in sync locally after each save
-  // (or, now, after a bulk import — see loadFees below).
+  // A row's `month` key is fine to compare lexically ('2026-01' <= '2026-08')
+  // since it's always YYYY-MM. Used both for the scoped fetch below and to
+  // decide whether an incoming realtime row belongs on screen right now.
+  const monthKeyFor = (y, m) => `${y}-${pad(m)}`;
+  const rowInScope = (row) => {
+    if (!row?.month) return false;
+    return viewMode === 'year' ? row.month.slice(0, 4) === String(year) : row.month === monthKeyFor(year, month);
+  };
+
+  // Fee rows for display are scoped to whatever period is on screen (current
+  // month, or the whole selected year) — same pattern AttendanceTab already
+  // uses for the `attendance` table — instead of pulling every fee row the
+  // academy has ever recorded.
   const loadFees = async () => {
     if (!academyId) return;
-    const { data } = await supabase.from('fees').select('*').eq('academy_id', academyId);
+    let q = supabase.from('fees').select('*').eq('academy_id', academyId);
+    q = viewMode === 'year'
+      ? q.gte('month', monthKeyFor(year, 1)).lte('month', monthKeyFor(year, 12))
+      : q.eq('month', monthKeyFor(year, month));
+    const { data } = await q;
     setFees(data || []);
   };
-  useEffect(() => { loadFees(); }, [academyId]);
+  useEffect(() => { loadFees(); }, [academyId, viewMode, month, year]);
+
+  // Transaction IDs are numbered sequentially per student across their
+  // ENTIRE history (see genTxnId), not just the visible period, so this
+  // needs a separate all-time query. Kept cheap by selecting only the two
+  // columns actually needed (not the full row — skips amount, method,
+  // msg_sent, collected_by, etc.) so it stays far lighter than the old
+  // `select('*')` even though it still touches every fee row.
+  const loadTxnCounts = async () => {
+    if (!academyId) return;
+    const { data } = await supabase.from('fees').select('student_id, payments').eq('academy_id', academyId);
+    const counts = {};
+    (data || []).forEach(f => {
+      const n = (f.payments || []).length;
+      if (!n) return;
+      counts[f.student_id] = (counts[f.student_id] || 0) + n;
+    });
+    setTxnCounts(counts);
+  };
+  useEffect(() => { loadTxnCounts(); }, [academyId]);
 
   // ---- Realtime sync ----
-  // `fees` isn't loaded through AcademyDataContext (it's fetched once here
-  // and kept in sync locally after each save, same as AttendanceTab does for
-  // `attendance`), so each row is merged directly into local state — an
-  // upsert or delete on the fees table from any device/staff member updates
-  // this screen without a manual refresh, same guarantee AttendanceTab gives
-  // for the `attendance` table.
+  // `fees` isn't loaded through AcademyDataContext — it's fetched here,
+  // scoped to the visible period, and kept in sync locally after each save.
+  // A changed row only gets merged into `fees` if it belongs to the period
+  // currently on screen; any change anywhere (any month) still triggers a
+  // debounced refresh of `txnCounts`, since that has to stay accurate
+  // academy-wide regardless of which month you're looking at.
+  const txnCountsDebounceRef = useRef(null);
+  const scheduleTxnCountsReload = () => {
+    clearTimeout(txnCountsDebounceRef.current);
+    txnCountsDebounceRef.current = setTimeout(loadTxnCounts, 400);
+  };
+
   useEffect(() => {
     if (!academyId) return;
 
@@ -464,23 +505,26 @@ export default function FeesTab() {
           if (payload.eventType === 'DELETE') {
             const oldRow = payload.old;
             if (!oldRow) return;
-            setFees(prev => prev.filter(f => f.id !== oldRow.id));
+            if (rowInScope(oldRow)) setFees(prev => prev.filter(f => f.id !== oldRow.id));
           } else {
             const row = payload.new;
             if (!row) return;
-            setFees(prev => {
-              const idx = prev.findIndex(f => f.id === row.id);
-              if (idx === -1) return [...prev, row];
-              const next = prev.slice();
-              next[idx] = row;
-              return next;
-            });
+            if (rowInScope(row)) {
+              setFees(prev => {
+                const idx = prev.findIndex(f => f.id === row.id);
+                if (idx === -1) return [...prev, row];
+                const next = prev.slice();
+                next[idx] = row;
+                return next;
+              });
+            }
           }
+          scheduleTxnCountsReload();
         })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [academyId]);
+    return () => { clearTimeout(txnCountsDebounceRef.current); supabase.removeChannel(channel); };
+  }, [academyId, viewMode, month, year]);
 
   // Attendance is fetched fresh for whichever period is being viewed (month or full year),
   // since that determines who's "eligible" to owe fees.
@@ -512,19 +556,6 @@ export default function FeesTab() {
   const feeMap = useMemo(() => {
     const m = {};
     fees.forEach(f => { m[`${f.student_id}|${norm(f.sport)}|${norm(f.batch_label)}|${f.month}`] = f; });
-    return m;
-  }, [fees]);
-
-  // Running count of payments already recorded per student, across every
-  // one of their fee rows (any sport/batch/month). Used to seed the next
-  // transaction ID sequence number (e.g. their 4th-ever payment gets ...-004).
-  const studentTxnCounts = useMemo(() => {
-    const m = {};
-    fees.forEach(f => {
-      const n = (f.payments || []).length;
-      if (!n) return;
-      m[f.student_id] = (m[f.student_id] || 0) + n;
-    });
     return m;
   }, [fees]);
 
@@ -867,7 +898,7 @@ export default function FeesTab() {
           sport={entryModal.sport}
           batchLabel={entryModal.batchLabel}
           fee={entryModal.fee}
-          nextTxnSeq={(studentTxnCounts[entryModal.student.id] || 0) + 1}
+          nextTxnSeq={(txnCounts[entryModal.student.id] || 0) + 1}
           onClose={() => setEntryModal(null)}
           onSaved={(updated) => {
             const wasFullyPaid = feeStatus(entryModal.fee) === 'paid';
@@ -878,6 +909,17 @@ export default function FeesTab() {
               next[idx] = updated;
               return next;
             });
+            // Optimistic local bump so a second payment opened right after
+            // this one still gets the correct next sequence number, without
+            // waiting on the debounced realtime refetch to catch up.
+            const oldCount = (entryModal.fee?.payments || []).length;
+            const newCount = (updated.payments || []).length;
+            if (newCount !== oldCount) {
+              setTxnCounts(prev => ({
+                ...prev,
+                [updated.student_id]: Math.max(0, (prev[updated.student_id] || 0) + (newCount - oldCount)),
+              }));
+            }
             setEntryModal(null);
             // Payment just crossed from partial/unpaid to fully paid — prompt
             // to send the thank-you message right away instead of making
@@ -906,7 +948,7 @@ export default function FeesTab() {
           collectedBy={collectedBy}
           isAdmin={isAdmin}
           onClose={() => setShowImport(false)}
-          onImported={loadFees}
+          onImported={() => { loadFees(); loadTxnCounts(); }}
         />
       )}
     </div>

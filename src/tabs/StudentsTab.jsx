@@ -303,7 +303,7 @@ export default function StudentsTab() {
           batches={visibleBatches}
           existingStudents={visibleStudents}
           onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); refresh(); }}
+          onSaved={() => setShowAdd(false)} /* single-row add/edit — AcademyDataContext's realtime subscription already merges it in, no full refetch needed */
         />
       )}
 
@@ -376,7 +376,7 @@ export default function StudentsTab() {
           student={editStudent}
           existingStudents={visibleStudents}
           onClose={() => setEditStudent(null)}
-          onSaved={() => { setEditStudent(null); refresh(); }}
+          onSaved={() => setEditStudent(null)} /* single-row edit — realtime handles the merge */
         />
       )}
     </div>
