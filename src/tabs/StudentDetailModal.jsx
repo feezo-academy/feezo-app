@@ -62,6 +62,7 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
   };
 
   const doDelete = async () => {
+    if (!isAdmin) return; // UI already hides this from staff; guard kept in case of direct calls
     if (!confirm(`Permanently delete "${student.name}"? Attendance & fee history will remain but be orphaned.`)) return;
     setBusy(true);
     await supabase.from('students').delete().eq('id', student.id);
@@ -129,7 +130,7 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
           {!isBanned
             ? <button className="btn btn-warning btn-sm" style={{ flex: 1 }} disabled={busy} onClick={toggleBan}>🚫 Block</button>
             : <button className="btn btn-success btn-sm" style={{ flex: 1 }} disabled={busy} onClick={toggleBan}>✅ Restore</button>}
-          <button className="btn btn-danger btn-sm" style={{ flex: 1 }} disabled={busy} onClick={doDelete}>🗑️ Delete</button>
+          {isAdmin && <button className="btn btn-danger btn-sm" style={{ flex: 1 }} disabled={busy} onClick={doDelete}>🗑️ Delete</button>}
         </div>
       </div>
     </div>,
