@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
+import { usePlan } from '../context/PlanContext';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/auditLog';
 import { exportGenericPdf, exportGenericXlsx } from '../lib/exporters';
 import SendMessageModal from '../components/SendMessageModal';
 import { DEFAULT_MSG, DEFAULT_THANK } from '../components/FeeMsgModal';
+import ImportFeesModal from '../components/ImportFeesModal';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const pad = (n) => String(n).padStart(2, '0');
@@ -411,7 +413,11 @@ function FeeEntryModal({ student, monthKey, monthLabel, sport, batchLabel, fee, 
 
 export default function FeesTab() {
   const { visibleStudents, visibleSports, visibleBatches, academy } = useAcademyData();
-  const { isAdmin, academyId, appUser, user } = useAuth();
+  const { isAdmin, academyId, appUser, user, canExport } = useAuth();
+  const { hasFeature, cheapestPlanWithFeature } = usePlan();
+  // Matches the pattern AttendanceTab uses for `markedBy` — real name lives
+  // on appUser (the app_users row), not the raw Supabase auth `user`.
+  const collectedBy = appUser?.name || user?.email || (isAdmin ? 'Admin' : 'Staff');
 
   const today = new Date();
   const [viewMode, setViewMode] = useState('month'); // 'month' | 'year'
@@ -430,14 +436,50 @@ export default function FeesTab() {
 
   const [sendModal, setSendModal] = useState(null);
   const [entryModal, setEntryModal] = useState(null); // { student, monthKey, monthLabel, sport, fee }
+  const [showImport, setShowImport] = useState(false);
 
-  // Fee rows are loaded once per academy and kept in sync locally after each save.
+  // Fee rows are loaded once per academy and kept in sync locally after each save
+  // (or, now, after a bulk import — see loadFees below).
+  const loadFees = async () => {
+    if (!academyId) return;
+    const { data } = await supabase.from('fees').select('*').eq('academy_id', academyId);
+    setFees(data || []);
+  };
+  useEffect(() => { loadFees(); }, [academyId]);
+
+  // ---- Realtime sync ----
+  // `fees` isn't loaded through AcademyDataContext (it's fetched once here
+  // and kept in sync locally after each save, same as AttendanceTab does for
+  // `attendance`), so each row is merged directly into local state — an
+  // upsert or delete on the fees table from any device/staff member updates
+  // this screen without a manual refresh, same guarantee AttendanceTab gives
+  // for the `attendance` table.
   useEffect(() => {
-    (async () => {
-      if (!academyId) return;
-      const { data } = await supabase.from('fees').select('*').eq('academy_id', academyId);
-      setFees(data || []);
-    })();
+    if (!academyId) return;
+
+    const channel = supabase
+      .channel(`fees-${academyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fees', filter: `academy_id=eq.${academyId}` },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const oldRow = payload.old;
+            if (!oldRow) return;
+            setFees(prev => prev.filter(f => f.id !== oldRow.id));
+          } else {
+            const row = payload.new;
+            if (!row) return;
+            setFees(prev => {
+              const idx = prev.findIndex(f => f.id === row.id);
+              if (idx === -1) return [...prev, row];
+              const next = prev.slice();
+              next[idx] = row;
+              return next;
+            });
+          }
+        })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [academyId]);
 
   // Attendance is fetched fresh for whichever period is being viewed (month or full year),
@@ -646,9 +688,42 @@ export default function FeesTab() {
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>💰 Fees</div>
-        <div style={{ display: 'flex', gap: 5 }}>
-          <button className="btn btn-gold btn-sm" onClick={() => exportGenericPdf('Fees Report', ['Student', 'Roll', 'Sport', 'Batch', 'Month', 'Amount Due', 'Amount Paid', 'Status'], exportRows.map(Object.values), 'fees.pdf')}>PDF</button>
-          <button className="btn btn-success btn-sm" onClick={() => exportGenericXlsx(exportRows, 'fees.xlsx', 'Fees')}>XL</button>
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {canExport && hasFeature('has_reports') && (
+            <>
+              <button className="btn btn-gold btn-sm" style={{ padding: '5px 9px', fontSize: 11 }} onClick={() => exportGenericPdf('Fees Report', ['Student', 'Roll', 'Sport', 'Batch', 'Month', 'Amount Due', 'Amount Paid', 'Status'], exportRows.map(Object.values), 'fees.pdf')}>PDF</button>
+              <button className="btn btn-success btn-sm" style={{ padding: '5px 9px', fontSize: 11 }} onClick={() => exportGenericXlsx(exportRows, 'fees.xlsx', 'Fees')}>XL</button>
+            </>
+          )}
+          {canExport && !hasFeature('has_reports') && (() => {
+            const target = cheapestPlanWithFeature('has_reports');
+            return (
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ padding: '5px 9px', fontSize: 11, opacity: 0.5, cursor: 'not-allowed' }}
+                disabled
+                title={target ? `Upgrade to ${target.name} to unlock exports` : 'Not available on your plan'}
+              >
+                PDF/XL
+              </button>
+            );
+          })()}
+          {isAdmin && hasFeature('has_bulk_import') && (
+            <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>
+          )}
+          {isAdmin && !hasFeature('has_bulk_import') && (() => {
+            const target = cheapestPlanWithFeature('has_bulk_import');
+            return (
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                disabled
+                title={target ? `Upgrade to ${target.name} to unlock bulk import` : 'Not available on your plan'}
+              >
+                ⬆️ Import
+              </button>
+            );
+          })()}
         </div>
       </div>
 
@@ -819,6 +894,18 @@ export default function FeesTab() {
               });
             }
           }}
+        />
+      )}
+
+      {showImport && (
+        <ImportFeesModal
+          academyId={academyId}
+          existingStudents={visibleStudents}
+          sportFilter={sportFilter}
+          batchFilter={batchFilter}
+          collectedBy={collectedBy}
+          onClose={() => setShowImport(false)}
+          onImported={loadFees}
         />
       )}
     </div>
