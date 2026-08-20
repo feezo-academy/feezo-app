@@ -292,8 +292,8 @@ export default function StudentsTab() {
       )}
 
       {showRestoreConfirm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-end' }}>
-          <div style={{ background: 'var(--card)', width: '100%', maxWidth: 480, margin: '0 auto', borderRadius: '20px 20px 0 0', boxShadow: 'var(--shadow)', padding: 20 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,40,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--card)', width: '100%', maxWidth: 420, borderRadius: 16, boxShadow: 'var(--shadow)', padding: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <span style={{ fontSize: 18 }}>↩️</span>
               <span style={{ fontWeight: 800, fontSize: 15 }}>Restore {selected.size} student{selected.size === 1 ? '' : 's'}?</span>
