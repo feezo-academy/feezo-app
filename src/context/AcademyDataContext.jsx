@@ -39,6 +39,53 @@ export function AcademyDataProvider({ children }) {
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => { refreshAcademy(); }, [refreshAcademy]);
 
+  // Realtime sync: instead of calling refresh() (which would re-fetch every
+  // sport/batch/student/enrollment row on every single change from any
+  // staff member — expensive with concurrent users), each event's payload
+  // already carries the changed row, so we merge it directly into state.
+  // One shared channel per academy covers all four tables to keep the
+  // websocket connection count low.
+  useEffect(() => {
+    if (!academyId) return;
+
+    const upsertById = (setter) => (row) => setter(prev => {
+      const idx = prev.findIndex(r => r.id === row.id);
+      if (idx === -1) return [...prev, row];
+      const next = prev.slice();
+      next[idx] = row;
+      return next;
+    });
+    const removeById = (setter) => (row) => setter(prev => prev.filter(r => r.id !== row.id));
+
+    const upsertSport = upsertById(setSports);
+    const removeSport = removeById(setSports);
+    const upsertBatch = upsertById(setRawBatches);
+    const removeBatch = removeById(setRawBatches);
+    const upsertStudent = upsertById(setRawStudents);
+    const removeStudent = removeById(setRawStudents);
+    const upsertEnrollment = upsertById(setRawEnrollments);
+    const removeEnrollment = removeById(setRawEnrollments);
+
+    const handle = (upsertFn, removeFn) => (payload) => {
+      if (payload.eventType === 'DELETE') removeFn(payload.old);
+      else upsertFn(payload.new);
+    };
+
+    const channel = supabase
+      .channel(`academy-data-${academyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sports', filter: `academy_id=eq.${academyId}` },
+        handle(upsertSport, removeSport))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'batches', filter: `academy_id=eq.${academyId}` },
+        handle(upsertBatch, removeBatch))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students', filter: `academy_id=eq.${academyId}` },
+        handle(upsertStudent, removeStudent))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'enrollments', filter: `academy_id=eq.${academyId}` },
+        handle(upsertEnrollment, removeEnrollment))
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [academyId]);
+
   // batches.name and students.batch are stored as "Sport::BatchName" composite
   // keys (same batch label can exist under multiple sports), so derive a
   // usable `sport` + `batchLabel` on every row rather than assuming a
