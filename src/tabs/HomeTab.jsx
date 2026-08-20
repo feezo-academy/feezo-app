@@ -4,6 +4,7 @@ import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import StatDrilldownModal from '../components/StatDrilldownModal';
+import { useLoading } from '../components/LoadingContext';
 
 function CustomTooltip({ active, payload, label, mode }) {
   if (!active || !payload || !payload.length) return null;
@@ -77,6 +78,7 @@ function isEligible(student, year, month, attendanceByStudent, sport, batchLabel
 export default function HomeTab() {
   const { visibleStudents, visibleSports, visibleBatches } = useAcademyData();
   const { academyId, isAdmin } = useAuth();
+  const { showLoader, hideLoader } = useLoading();
   const today = new Date();
   const [month, setMonth] = useState(today.getMonth());
   const [year, setYear] = useState(today.getFullYear());
@@ -97,25 +99,27 @@ export default function HomeTab() {
     return `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   });
 
-  useEffect(() => {
-    (async () => {
-      if (!academyId) return;
-      const { data: feeData } = await supabase.from('fees').select('*').eq('academy_id', academyId);
-      setFees(feeData || []);
-    })();
-  }, [academyId]);
-
-  // Fetched once per academy (not scoped to the browsed month) so Fee Pending
-  // can look back across every past month, the same way FeesTab does.
+  // Fees + attendance fetched together under one loader so the ring shows
+  // once and hides once, instead of flickering twice for two separate calls.
+  // Attendance is fetched per academy (not scoped to the browsed month) so
+  // Fee Pending can look back across every past month, same as FeesTab.
   // IMPORTANT: sport + batch are fetched too — without them there's no way
   // to scope attendance/eligibility to a specific enrollment, which was
   // causing multi-sport students' records to bleed across sport filters.
   useEffect(() => {
     (async () => {
-      if (!academyId) { setAllAttendance([]); return; }
-      const { data } = await supabase.from('attendance').select('date,status,student_id,sport,batch')
-        .eq('academy_id', academyId);
-      setAllAttendance(data || []);
+      if (!academyId) { setFees([]); setAllAttendance([]); return; }
+      showLoader('Loading dashboard...');
+      try {
+        const [feesRes, attendanceRes] = await Promise.all([
+          supabase.from('fees').select('*').eq('academy_id', academyId),
+          supabase.from('attendance').select('date,status,student_id,sport,batch').eq('academy_id', academyId),
+        ]);
+        setFees(feesRes.data || []);
+        setAllAttendance(attendanceRes.data || []);
+      } finally {
+        hideLoader();
+      }
     })();
   }, [academyId]);
 
