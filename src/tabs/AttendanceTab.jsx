@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
+import { usePlan } from '../context/PlanContext';
 import { supabase } from '../lib/supabaseClient';
 import { exportGenericPdf, exportGenericXlsx } from '../lib/exporters';
 import ImportAttendanceModal from '../components/ImportAttendanceModal';
@@ -43,6 +44,7 @@ function RollBadge({ rollNo }) {
 export default function AttendanceTab() {
   const { visibleStudents, visibleSports, visibleBatches, refresh } = useAcademyData();
   const { isAdmin, academyId, user, appUser, canExport } = useAuth();
+  const { hasFeature, cheapestPlanWithFeature } = usePlan();
   // Matches the `marked_by` text column in Supabase — real name lives on
   // appUser (the app_users row), not the raw Supabase auth `user`.
   const markedBy = appUser?.name || user?.email || (isAdmin ? 'Admin' : 'Staff');
@@ -285,6 +287,64 @@ export default function AttendanceTab() {
       setLoading(false);
     })();
   }, [academyId, date, viewMode, year, month, reloadKey, students, visibleSports]);
+
+  // ---- Realtime sync ----
+  // AcademyDataContext already keeps sports/batches/students/enrollments live;
+  // `attendance` and `attendance_day_status` aren't loaded there (they're
+  // view-scoped — day/month/year — so a bare upsert-into-context wouldn't
+  // know which aggregate to update). Instead: for the day view, merge each
+  // changed attendance row directly into `records`/`lateMap` (cheap, matches
+  // what's already on screen). For month/year, a single row only ever moves
+  // one cell of a pre-computed aggregate, so it's simpler and still cheap to
+  // debounce a re-fetch via the existing effect above (bumping `reloadKey`)
+  // rather than duplicate its aggregation logic here.
+  const reloadDebounceRef = useRef(null);
+  const scheduleReload = () => {
+    clearTimeout(reloadDebounceRef.current);
+    reloadDebounceRef.current = setTimeout(() => setReloadKey(k => k + 1), 400);
+  };
+
+  useEffect(() => {
+    if (!academyId) return;
+
+    const channel = supabase
+      .channel(`attendance-${academyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance', filter: `academy_id=eq.${academyId}` },
+        (payload) => {
+          const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
+          if (!row) return;
+          if (viewMode !== 'day') { scheduleReload(); return; }
+          if (row.date !== date) return; // different day being viewed — nothing on screen changes
+          const k = keyFor(row.student_id, row.sport, row.batch);
+          if (payload.eventType === 'DELETE') {
+            setRecords(prev => { const next = { ...prev }; delete next[k]; return next; });
+            setLateMap(prev => { const next = { ...prev }; delete next[k]; return next; });
+          } else {
+            setRecords(prev => ({ ...prev, [k]: row.status }));
+            setLateMap(prev => ({ ...prev, [k]: !!row.is_latecomer }));
+          }
+        })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_day_status', filter: `academy_id=eq.${academyId}` },
+        (payload) => {
+          const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
+          if (!row || viewMode !== 'day' || row.date !== date) return;
+          // Register closing is one-way (never goes back to open), so it's
+          // safe to only ever flip these true — matches the merge-never-
+          // downgrades rule already used for the initial fetch above.
+          if (row.sport) {
+            setDayStatusMap(m => (m[row.sport] ? m : { ...m, [row.sport]: !!row.completed }));
+          } else if (row.completed) {
+            setDayStatusMap(m => {
+              const merged = { ...m };
+              visibleSports.forEach(sp => { merged[sp.name] = true; });
+              return merged;
+            });
+          }
+        })
+      .subscribe();
+
+    return () => { clearTimeout(reloadDebounceRef.current); supabase.removeChannel(channel); };
+  }, [academyId, date, viewMode, visibleSports]);
 
   // Tapping P/A. Behavior depends on whether that student's sport register is
   // closed for the day (dayStatusMap[sport]):
@@ -546,13 +606,41 @@ export default function AttendanceTab() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>🗓️ Attendance</div>
         <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {canExport && (
+          {canExport && hasFeature('has_reports') && (
             <>
               <button className="btn btn-gold btn-sm" style={{ padding: '5px 9px', fontSize: 11 }} onClick={() => doExport('pdf')}>PDF</button>
               <button className="btn btn-success btn-sm" style={{ padding: '5px 9px', fontSize: 11 }} onClick={() => doExport('xlsx')}>XL</button>
             </>
           )}
-          {isAdmin && <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>}
+          {canExport && !hasFeature('has_reports') && (() => {
+            const target = cheapestPlanWithFeature('has_reports');
+            return (
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ padding: '5px 9px', fontSize: 11, opacity: 0.5, cursor: 'not-allowed' }}
+                disabled
+                title={target ? `Upgrade to ${target.name} to unlock exports` : 'Not available on your plan'}
+              >
+                PDF/XL
+              </button>
+            );
+          })()}
+          {isAdmin && hasFeature('has_bulk_import') && (
+            <button className="btn btn-outline btn-sm" onClick={() => setShowImport(true)}>⬆️ Import</button>
+          )}
+          {isAdmin && !hasFeature('has_bulk_import') && (() => {
+            const target = cheapestPlanWithFeature('has_bulk_import');
+            return (
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                disabled
+                title={target ? `Upgrade to ${target.name} to unlock bulk import` : 'Not available on your plan'}
+              >
+                ⬆️ Import
+              </button>
+            );
+          })()}
         </div>
       </div>
 
