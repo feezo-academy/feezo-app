@@ -138,6 +138,68 @@ export default function HomeTab() {
     })();
   }, [academyId, month, year]);
 
+  // Realtime sync: another staff member marking attendance or recording a
+  // payment should show up here without a manual refresh. Each event's
+  // payload already carries the changed row, so we merge/remove it locally
+  // instead of re-querying — and only apply it if the row falls within the
+  // currently browsed month, to stay consistent with what was actually
+  // fetched above (out-of-month changes are ignored, not merged in).
+  useEffect(() => {
+    if (!academyId) return;
+
+    const monthStartIso = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const rangeEndIso = isFutureMonth
+      ? monthStartIso
+      : `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+    const targetMonthIso = `${year}-${String(month + 1).padStart(2, '0')}`;
+
+    // Attendance rows are fetched without `id` (only the columns HomeTab
+    // needs), so local rows are matched by the same composite key as the
+    // unique index (student_id, date, sport, batch) instead of `id`.
+    const attKey = (r) => `${r.student_id}|${r.date}|${norm(r.sport)}|${norm(r.batch)}`;
+
+    const applyFeeEvent = (payload) => {
+      const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
+      if (!row || row.month !== targetMonthIso) return; // different month — not in view, ignore
+      setFees(prev => {
+        if (payload.eventType === 'DELETE') return prev.filter(f => f.id !== row.id);
+        const idx = prev.findIndex(f => f.id === row.id);
+        if (idx === -1) return [...prev, row];
+        const next = prev.slice();
+        next[idx] = row;
+        return next;
+      });
+    };
+
+    const applyAttendanceEvent = (payload) => {
+      const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
+      if (!row || row.date < monthStartIso || row.date > rangeEndIso) return; // outside browsed range, ignore
+      const thin = { date: row.date, status: row.status, student_id: row.student_id, sport: row.sport, batch: row.batch };
+      const k = attKey(thin);
+      setAllAttendance(prev => {
+        const idx = prev.findIndex(r => attKey(r) === k);
+        if (payload.eventType === 'DELETE') {
+          if (idx === -1) return prev;
+          const next = prev.slice();
+          next.splice(idx, 1);
+          return next;
+        }
+        if (idx === -1) return [...prev, thin];
+        const next = prev.slice();
+        next[idx] = thin;
+        return next;
+      });
+    };
+
+    const channel = supabase
+      .channel(`home-tab-${academyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fees', filter: `academy_id=eq.${academyId}` }, applyFeeEvent)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance', filter: `academy_id=eq.${academyId}` }, applyAttendanceEvent)
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [academyId, month, year]);
+
   // Flatten each student's enrollments into one row per sport+batch — same
   // pattern as AttendanceTab/FeesTab — so a student in two sports/batches is
   // tracked as two independent, filterable rows instead of being collapsed
