@@ -159,6 +159,7 @@ export default function AddStudentModal({ academyId, sports, batches, student, i
       gender: form.gender || null,
       height: form.height ? String(form.height) : null,
       weight: form.weight ? String(form.weight) : null,
+      bmi: bmi || null,
       parent: form.parent || null,
       contact: normalizePhone(form.contact),
       contact2: form.contact2 ? normalizePhone(form.contact2) : null,

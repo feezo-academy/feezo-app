@@ -110,6 +110,23 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
           <Row label="School" value={student.address} />
           <Row label="Joined" value={student.join_date} />
 
+          {(student.height || student.weight || student.bmi) && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ color: 'var(--gray)', fontSize: 11 }}>Height</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{student.height ? `${student.height} cm` : '—'}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--gray)', fontSize: 11 }}>Weight</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{student.weight ? `${student.weight} kg` : '—'}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--gray)', fontSize: 11 }}>BMI</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{student.bmi || '—'}</div>
+              </div>
+            </div>
+          )}
+
           <div style={{ padding: '10px 0' }}>
             <div style={{ color: 'var(--gray)', fontSize: 12, marginBottom: 6 }}>🏆 Sports Enrolled</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -122,7 +139,7 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
             </div>
           </div>
 
-          <AchievementsSection studentId={student.id} academyId={academyId} canEdit={isAdmin} />
+          <AchievementsSection studentId={student.id} academyId={academyId} canEdit={true} />
         </div>
 
         <div style={{ display: 'flex', gap: 6, padding: 16, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
