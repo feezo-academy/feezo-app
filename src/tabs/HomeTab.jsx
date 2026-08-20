@@ -223,7 +223,12 @@ export default function HomeTab() {
   // paid AND partially paid entries — not just entries at 'paid' status.
   // Scholarships are excluded here since no real payment was collected for
   // them (see feeStatus()), even though they count as "settled" elsewhere.
-  const collectedFees = scopedFees.filter(f => !f.is_scholarship && (parseInt(f.amount, 10) || 0) > 0);
+  // Restricted to currently-active students only — a fee paid before a
+  // student was later marked dropped shouldn't surface a dropped student
+  // in this tile (Total/Joined/Pending already filter this way).
+  const activeStudentIdSet = new Set(activeStudents.map(s => s.id));
+  const collectedFees = scopedFees.filter(f =>
+    !f.is_scholarship && (parseInt(f.amount, 10) || 0) > 0 && activeStudentIdSet.has(f.student_id));
   const collected = collectedFees.reduce((s, f) => s + (parseInt(f.amount, 10) || 0), 0);
 
   // --- Fee Pending: active students only, dues strictly BEFORE the browsed
@@ -466,6 +471,7 @@ export default function HomeTab() {
           icon={drilldown.icon}
           students={drilldown.students || []}
           rows={drilldown.rows}
+          showContact={isAdmin}
           onClose={() => setDrilldown(null)}
         />
       )}
