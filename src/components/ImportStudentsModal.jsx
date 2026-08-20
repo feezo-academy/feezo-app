@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabaseClient';
 import { buildBatchKey } from '../lib/batchKey';
+import { usePlan } from '../context/PlanContext';
 
 const HEADER_MAP = {
   name: 'name', studentname: 'name', fullname: 'name',
@@ -95,7 +96,8 @@ function parseCSVLine(line) {
   return cols;
 }
 
-export default function ImportStudentsModal({ academyId, sports, batches, existingStudents, onClose, onImported }) {
+export default function ImportStudentsModal({ academyId, sports, batches, existingStudents, totalStudents, onClose, onImported }) {
+  const { limits, plan } = usePlan();
   const [rows, setRows] = useState(null); // parsed+validated rows, or null before a file is chosen
   const [rejected, setRejected] = useState([]);
   const [error, setError] = useState('');
@@ -284,6 +286,31 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         enrollmentExists
       );
     });
+
+    // Enforce the plan's student limit on NEW students only — matched/updated
+    // rows don't add to the count. Overflow rows are bumped to "rejected"
+    // rather than silently dropped, so the user sees exactly which rows to
+    // remove or upgrade for.
+    const planLimit = limits.students;
+    if (planLimit !== null && planLimit !== undefined) {
+      const baseline = totalStudents ?? existingStudents.length;
+      let remainingSlots = Math.max(0, planLimit - baseline);
+      const kept = [];
+      for (const r of parsed) {
+        if (r._match) { kept.push(r); continue; } // updates don't consume a slot
+        if (remainingSlots > 0) { kept.push(r); remainingSlots--; continue; }
+        rej.push({
+          label: r.name,
+          reason: `Plan limit reached (${planLimit} students on your ${plan?.name || 'current'} plan) — upgrade to import more.`,
+          raw: {
+            Name: r.name, RollNo: r.rollNo, Sport: r.sport, Batch: r.batchLabel, DOB: r.dob,
+            Gender: r.gender, Height: r.height, Weight: r.weight, Parent: r.parent,
+            Contact: r.contact, Contact2: r.contact2, School: r.address, JoinDate: r.joinDate,
+          },
+        });
+      }
+      parsed.splice(0, parsed.length, ...kept);
+    }
 
     setRows(parsed);
     setRejected(rej);
