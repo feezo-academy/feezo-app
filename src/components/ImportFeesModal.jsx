@@ -67,7 +67,23 @@ function parseCSVLine(line) {
   return cols;
 }
 
-export default function ImportFeesModal({ academyId, existingStudents, sportFilter, batchFilter, collectedBy, onClose, onImported }) {
+// Same "once fully paid, only admin can touch it" rule FeesTab's canEditFee
+// enforces on manual entry — kept as a local copy (self-contained modal,
+// same convention as duplicating parseCSVLine/genTxnId above) so a staff
+// member importing a sheet can't silently overwrite a settled fee that
+// they'd be blocked from editing by hand.
+function feeStatus(row) {
+  if (!row) return 'unpaid';
+  if (row.is_scholarship) return 'paid';
+  const due = parseInt(row.amount_due, 10);
+  const paid = parseInt(row.amount, 10) || 0;
+  if (!due || isNaN(due)) return paid > 0 ? 'paid' : 'unpaid';
+  if (paid <= 0) return 'unpaid';
+  if (paid >= due) return 'paid';
+  return 'partial';
+}
+
+export default function ImportFeesModal({ academyId, existingStudents, sportFilter, batchFilter, collectedBy, isAdmin, onClose, onImported }) {
   const [preview, setPreview] = useState(null); // { monthColumns, studentRows, insertCount, updateCount, unchangedCount, rejected, _maxTxnSeq }
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -241,6 +257,12 @@ export default function ImportFeesModal({ academyId, existingStudents, sportFilt
     const studentRows = matchedRows.map(({ student, cells }) => {
       const marks = cells.map(c => {
         const existing = existingMap[rowKey(student.id, student.sport, student.batchLabel, c.monthKey)];
+        // A non-admin importer can't touch a fee that's already fully paid or
+        // scholarship-settled — matches canEditFee's rule for manual entry.
+        if (existing && !isAdmin && feeStatus(existing) === 'paid') {
+          rejected.push({ label: `${student.name} — ${monthLabel(c.monthKey)}`, reason: 'Fee already fully paid — only admin can modify', kind: 'reject' });
+          return null;
+        }
         const same = existing &&
           (parseInt(existing.amount_due, 10) || 0) === c.due &&
           (parseInt(existing.amount, 10) || 0) === c.paid &&
@@ -251,14 +273,14 @@ export default function ImportFeesModal({ academyId, existingStudents, sportFilt
         else if (same) { action = 'unchanged'; unchangedCount++; }
         else { action = 'update'; updateCount++; }
         return { ...c, action, existing };
-      });
+      }).filter(Boolean);
       return {
         student, marks,
         insertCount: marks.filter(m => m.action === 'insert').length,
         updateCount: marks.filter(m => m.action === 'update').length,
         unchangedCount: marks.filter(m => m.action === 'unchanged').length,
       };
-    });
+    }).filter(r => r.marks.length > 0);
 
     setPreview({ monthColumns: monthKeys, studentRows, rejected, insertCount, updateCount, unchangedCount, _maxTxnSeq: maxTxnSeq });
     setError('');
