@@ -41,6 +41,26 @@ function rollPrefix(sport, batch) {
   return (s[0] + b[0]).toUpperCase();
 }
 
+function calcAge(dobIso) {
+  if (!dobIso) return '';
+  const d = new Date(dobIso);
+  if (isNaN(d)) return '';
+  const today = new Date();
+  if (d > today) return '';
+  let age = today.getFullYear() - d.getFullYear();
+  const mDiff = today.getMonth() - d.getMonth();
+  if (mDiff < 0 || (mDiff === 0 && today.getDate() < d.getDate())) age--;
+  return age;
+}
+
+function calcBmi(heightCm, weightKg) {
+  const h = parseFloat(heightCm);
+  const w = parseFloat(weightKg);
+  if (!h || !w || h <= 0 || w <= 0) return '';
+  const m = h / 100;
+  return (w / (m * m)).toFixed(1);
+}
+
 function normalizeGender(val) {
   const s = String(val || '').trim().toLowerCase();
   if (!s) return '';
@@ -199,10 +219,16 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         previewRollNums.push(rollNo);
       }
 
+      const height = get(cols, 'height');
+      const weight = get(cols, 'weight');
+      const effHeightForBmi = height || (match ? match.height : '');
+      const effWeightForBmi = weight || (match ? match.weight : '');
+
       parsed.push({
         _match: match || null,
         name, rollNo, sport: matchedSport.name, batchLabel: matchedBatch.batchLabel,
-        dob, gender: normalizeGender(get(cols, 'gender')), height: get(cols, 'height'), weight: get(cols, 'weight'),
+        dob, age: calcAge(dob) ? String(calcAge(dob)) : '', gender: normalizeGender(get(cols, 'gender')), height, weight,
+        bmi: calcBmi(effHeightForBmi, effWeightForBmi),
         parent, contact, contact2, address: get(cols, 'address'),
         joinDate: excelDateToIso(get(cols, 'joinDate')) || new Date().toISOString().slice(0, 10),
       });
@@ -222,6 +248,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
       const effGender = r.gender || m.gender || '';
       const effHeight = r.height || m.height || '';
       const effWeight = r.weight || m.weight || '';
+      const effBmi = r.bmi || m.bmi || '';
       const effBatchKey = buildBatchKey(r.sport, r.batchLabel);
       // A student can now hold several enrollments (multiple sport/batch rows),
       // so "no changes" also requires this row's specific sport+batch to
@@ -238,6 +265,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         effGender === (m.gender || '') &&
         effHeight === (m.height || '') &&
         effWeight === (m.weight || '') &&
+        effBmi === (m.bmi || '') &&
         effBatchKey === (m.batch || '') &&
         enrollmentExists
       );
@@ -285,8 +313,8 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
     if (inserts.length) {
       const payload = inserts.map(r => ({
         academy_id: academyId, name: r.name, roll_no: r.rollNo,
-        batch: buildBatchKey(r.sport, r.batchLabel), dob: r.dob || null, gender: r.gender || null,
-        height: r.height || null, weight: r.weight || null, parent: r.parent || null,
+        batch: buildBatchKey(r.sport, r.batchLabel), dob: r.dob || null, age: r.age || null, gender: r.gender || null,
+        height: r.height || null, weight: r.weight || null, bmi: r.bmi || null, parent: r.parent || null,
         contact: r.contact || null, contact2: r.contact2 || null, address: r.address || null,
         join_date: r.joinDate,
       }));
@@ -313,6 +341,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
         contact: r.contact || r._match.contact, contact2: r.contact2 || r._match.contact2,
         address: r.address || r._match.address, gender: r.gender || r._match.gender,
         height: r.height || r._match.height, weight: r.weight || r._match.weight,
+        bmi: r.bmi || r._match.bmi || null,
       }).eq('id', r._match.id);
       if (updErr) {
         failures.push(`${r.name}: ${updErr.code === '23505' ? `roll number "${r.rollNo}" already in use` : updErr.message}`);
@@ -387,7 +416,7 @@ export default function ImportStudentsModal({ academyId, sports, batches, existi
               <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {rows.map((r, i) => (
                   <div key={i} className="card" style={{ padding: 10, fontSize: 12.5 }}>
-                    <strong>{r.name}</strong> · {r.rollNo} · {r.sport}/{r.batchLabel}{r.gender ? ` · ${r.gender}` : ''}{r.height ? ` · ${r.height}cm` : ''}{r.weight ? ` · ${r.weight}kg` : ''}
+                    <strong>{r.name}</strong> · {r.rollNo} · {r.sport}/{r.batchLabel}{r.gender ? ` · ${r.gender}` : ''}{r.height ? ` · ${r.height}cm` : ''}{r.weight ? ` · ${r.weight}kg` : ''}{r.bmi ? ` · BMI ${r.bmi}` : ''}
                     <span style={{
                       float: 'right', fontWeight: 700,
                       color: r._noChanges ? 'var(--gray)' : r._match ? 'var(--accent2)' : 'var(--green, #16a34a)',
