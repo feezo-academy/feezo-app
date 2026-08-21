@@ -6,13 +6,14 @@ import ProgramManagerModal from './ProgramManagerModal';
 import AwardPointsModal from './AwardPointsModal';
 import StudentChartsModal from './StudentChartsModal';
 import StudentHistoryModal from './StudentHistoryModal';
+import FeatureGate from './FeatureGate';
 
 const PRESENT_STATUS = 'P'; // adjust here if attendance uses a different code for "present"
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 function monthStartIso() { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); }
 
-export default function PerformancePage() {
+function PerformancePageContent() {
   const { academyId, isAdmin, user, appUser } = useAuth();
   const { visibleStudents, visibleSports } = useAcademyData();
 
@@ -415,5 +416,13 @@ export default function PerformancePage() {
         />
       )}
     </div>
+  );
+}
+
+export default function PerformancePage() {
+  return (
+    <FeatureGate feature="has_performance">
+      <PerformancePageContent />
+    </FeatureGate>
   );
 }
