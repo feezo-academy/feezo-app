@@ -37,8 +37,6 @@ export default function AcademyCard() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [phone2, setPhone2] = useState('');
-  const [tagline, setTagline] = useState('');
-  const [loginSupport, setLoginSupport] = useState('');
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -48,8 +46,6 @@ export default function AcademyCard() {
     setEmail(academy.email || '');
     setPhone(academy.phone || '');
     setPhone2(academy.phone2 || '');
-    setTagline(academy.tagline || '');
-    setLoginSupport(academy.login_support || '');
   }, [academy]);
 
   const onPickLogo = async (e) => {
@@ -68,7 +64,7 @@ export default function AcademyCard() {
     setSaving(true);
     const { error } = await supabase.from('academies').update({
       name: name.trim(), logo_url: logoUrl, email: email.trim(), phone: phone.trim(),
-      phone2: phone2.trim(), tagline: tagline.trim(), login_support: loginSupport.trim(),
+      phone2: phone2.trim(),
       updated_at: new Date().toISOString(),
     }).eq('id', academy.id);
     setSaving(false);
@@ -90,7 +86,6 @@ export default function AcademyCard() {
           {academy.email && <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>{academy.email}</div>}
           {academy.phone && <div style={{ fontSize: 12, color: 'var(--gray)' }}>{academy.phone}</div>}
           {academy.phone2 && <div style={{ fontSize: 12, color: 'var(--gray)' }}>{academy.phone2}</div>}
-          {academy.tagline && <div style={{ fontSize: 11, color: 'var(--graydk)', marginTop: 1 }}>{academy.tagline}</div>}
         </div>
         {isAdmin && !editing && (
           <button style={{ flexShrink: 0, background: 'var(--accent2)', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
@@ -132,15 +127,6 @@ export default function AcademyCard() {
             <label className="form-label">Alternate Phone <span style={{ fontSize: 10, color: 'var(--gray)' }}>(optional)</span></label>
             <input className="form-input" value={phone2} onChange={e => setPhone2(e.target.value)} placeholder="+91 XXXXX" />
           </div>
-          <div className="form-group">
-            <label className="form-label">Tagline / Subtitle</label>
-            <input className="form-input" value={tagline} onChange={e => setTagline(e.target.value)} placeholder="e.g. Admin & Staff Portal" />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Login Page Support Line <span style={{ fontSize: 10, color: 'var(--gray)' }}>(shown at bottom of login)</span></label>
-            <input className="form-input" value={loginSupport} onChange={e => setLoginSupport(e.target.value)} placeholder="e.g. Support: name@email.com | +91 XXXXXXXXXX" />
-          </div>
-
           <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
             <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setEditing(false)}>✕ Close</button>
             <button className="btn btn-primary" style={{ flex: 2, padding: 11 }} onClick={save} disabled={saving}>
