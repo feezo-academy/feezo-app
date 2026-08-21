@@ -103,6 +103,40 @@ export default function EnquiryTab() {
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [academyId]);
 
+  // ---- Realtime sync ----
+  // Mirrors FeesTab's pattern: a dedicated channel on `enquiries` patches
+  // local state as rows change on any device, so the list (and any open
+  // detail card) stays live without a manual refetch after every action.
+  useEffect(() => {
+    if (!academyId) return;
+
+    const channel = supabase
+      .channel(`enquiries-${academyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'enquiries', filter: `academy_id=eq.${academyId}` },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const oldRow = payload.old;
+            if (!oldRow) return;
+            setEnquiries(prev => prev.filter(q => q.id !== oldRow.id));
+            setDetail(d => (d && d.id === oldRow.id ? null : d));
+          } else {
+            const row = payload.new;
+            if (!row) return;
+            setEnquiries(prev => {
+              const idx = prev.findIndex(q => q.id === row.id);
+              if (idx === -1) return [row, ...prev];
+              const next = prev.slice();
+              next[idx] = row;
+              return next;
+            });
+            setDetail(d => (d && d.id === row.id ? { ...d, ...row } : d));
+          }
+        })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [academyId]);
+
   const logEnquiry = async (message) => {
     try {
       const { error } = await supabase.from('audit_log').insert({
@@ -179,7 +213,6 @@ export default function EnquiryTab() {
     if (error) { setAddError(error.message); return; }
     logEnquiry(`Added query for ${row.name}`);
     setShowAdd(false);
-    load();
   };
 
   // ---- Detail / edit ----
@@ -217,14 +250,12 @@ export default function EnquiryTab() {
     logEnquiry(`Edited query for ${patch.name}`);
     setEditing(false);
     setDetail(d => ({ ...d, ...patch }));
-    load();
   };
 
   const saveReminder = async (newDate) => {
     await supabase.from('enquiries').update({ reminder_date: newDate || null }).eq('id', detail.id);
     logEnquiry(`Reminder date updated for ${detail.name}${newDate ? ` → ${newDate}` : ' (cleared)'}`);
     setDetail(d => ({ ...d, reminder_date: newDate || null }));
-    load();
   };
 
   const saveNote = async () => {
@@ -236,7 +267,6 @@ export default function EnquiryTab() {
     logEnquiry(`Note added to query for ${detail.name} by ${createdByName}`);
     setDetail(d => ({ ...d, staff_notes: updated }));
     setNoteDraft('');
-    load();
   };
 
   const toggleArchive = async () => {
@@ -244,7 +274,6 @@ export default function EnquiryTab() {
     await supabase.from('enquiries').update({ archived: goingToArchive, archived_at: goingToArchive ? new Date().toISOString() : null }).eq('id', detail.id);
     logEnquiry(`${goingToArchive ? 'Archived' : 'Restored'} query for ${detail.name}`);
     closeDetail();
-    load();
   };
 
   const removeEnquiry = async () => {
@@ -252,7 +281,6 @@ export default function EnquiryTab() {
     await supabase.from('enquiries').delete().eq('id', detail.id);
     logEnquiry(`Deleted query for ${detail.name}`);
     closeDetail();
-    load();
   };
 
   const startConvert = () => {
@@ -269,7 +297,6 @@ export default function EnquiryTab() {
       const q = enquiries.find(e => e.id === id);
       await supabase.from('enquiries').delete().eq('id', id);
       logEnquiry(`Converted query to student: "${q?.name || ''}"`);
-      load();
     }
   };
 
