@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
+import { usePlan } from '../context/PlanContext';
 import { supabase } from '../lib/supabaseClient';
 import { normalizePhone, isValidPhone } from '../lib/phone';
 import AddStudentModal from '../components/AddStudentModal';
@@ -61,9 +62,17 @@ function Field({ label, children }) {
 export default function EnquiryTab() {
   const { academyId, isAdmin, appUser } = useAuth();
   const { visibleSports, visibleBatches } = useAcademyData();
+  const { isAtLimit, limits, plan, nextPlanForLimit } = usePlan();
   const [enquiries, setEnquiries] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Authoritative count straight from the DB (not derived from `enquiries`,
+  // which may later be paginated/filtered). Archived rows are intentionally
+  // included — the plan limit is on total enquiries ever created, not just
+  // the active ones.
+  const [enquiryCount, setEnquiryCount] = useState(0);
+  const atEnquiryLimit = isAtLimit('enquiries', enquiryCount);
 
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ name: '', phone: '', query: '', location: '', sport: '', conversionRatio: '', reminderDate: '', assignedTo: '' });
@@ -92,11 +101,15 @@ export default function EnquiryTab() {
   const load = async () => {
     if (!academyId) return;
     setLoading(true);
-    const [enqRes, usersRes] = await Promise.all([
+    const [enqRes, countRes, usersRes] = await Promise.all([
       supabase.from('enquiries').select('*').eq('academy_id', academyId).order('created_at', { ascending: false }),
+      // head:true → no rows returned, just the count. No `archived` filter,
+      // so this counts active + archived together.
+      supabase.from('enquiries').select('*', { count: 'exact', head: true }).eq('academy_id', academyId),
       isAdmin ? supabase.from('app_users').select('*').eq('academy_id', academyId) : Promise.resolve({ data: [] }),
     ]);
     setEnquiries(enqRes.data || []);
+    setEnquiryCount(countRes.count ?? (enqRes.data || []).length);
     setStaffList(usersRes.data || []);
     setLoading(false);
   };
@@ -119,6 +132,7 @@ export default function EnquiryTab() {
             if (!oldRow) return;
             setEnquiries(prev => prev.filter(q => q.id !== oldRow.id));
             setDetail(d => (d && d.id === oldRow.id ? null : d));
+            setEnquiryCount(c => Math.max(0, c - 1));
           } else {
             const row = payload.new;
             if (!row) return;
@@ -130,6 +144,7 @@ export default function EnquiryTab() {
               return next;
             });
             setDetail(d => (d && d.id === row.id ? { ...d, ...row } : d));
+            if (payload.eventType === 'INSERT') setEnquiryCount(c => c + 1);
           }
         })
       .subscribe();
@@ -177,6 +192,7 @@ export default function EnquiryTab() {
 
   // ---- Add ----
   const openAdd = () => {
+    if (atEnquiryLimit) return;
     setAddForm({ name: '', phone: '', query: '', location: '', sport: '', conversionRatio: '', reminderDate: '', assignedTo: '' });
     setAddError('');
     setShowAdd(true);
@@ -191,6 +207,10 @@ export default function EnquiryTab() {
   }, [showAdd]);
 
   const saveEnquiry = async () => {
+    if (atEnquiryLimit) {
+      setAddError(`Limit reached (${limits.enquiries} enquiries) on your ${plan?.name || 'current'} plan.`);
+      return;
+    }
     if (!addForm.name.trim()) { setAddError('Name is required.'); return; }
     if (addForm.phone && !isValidPhone(addForm.phone)) { setAddError('Phone must be a 10-digit number.'); return; }
     setAddError('');
@@ -325,6 +345,13 @@ export default function EnquiryTab() {
         </div>
       </div>
 
+      {atEnquiryLimit && (
+        <div style={{ fontSize: 11.5, color: '#dc2626', background: '#dc262622', border: '1px solid #dc262644', borderRadius: 8, padding: '7px 10px', marginBottom: 8 }}>
+          Limit reached ({limits.enquiries} enquiries) on your <strong>{plan?.name}</strong> plan.
+          {(() => { const t = nextPlanForLimit('enquiries'); return t ? <> Upgrade to <strong>{t.name}</strong> for more.</> : null; })()}
+        </div>
+      )}
+
       <div style={{ position: 'relative', marginBottom: 8 }}>
         <input className="form-input" placeholder="Search by name or phone…" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
@@ -396,7 +423,9 @@ export default function EnquiryTab() {
       {!showAdd && !detail && createPortal(
         <button
           onClick={openAdd}
-          aria-label="Add enquiry"
+          disabled={atEnquiryLimit}
+          aria-label={atEnquiryLimit ? 'Enquiry limit reached' : 'Add enquiry'}
+          title={atEnquiryLimit ? `Limit reached (${limits.enquiries} enquiries) on ${plan?.name} plan` : undefined}
           style={{
             position: 'fixed',
             right: 18,
@@ -404,7 +433,7 @@ export default function EnquiryTab() {
             width: 54,
             height: 54,
             borderRadius: '50%',
-            background: 'var(--accent2)',
+            background: atEnquiryLimit ? 'var(--gray)' : 'var(--accent2)',
             color: '#fff',
             border: 'none',
             fontSize: 26,
@@ -414,7 +443,8 @@ export default function EnquiryTab() {
             alignItems: 'center',
             justifyContent: 'center',
             boxShadow: '0 6px 16px rgba(0,0,0,.28)',
-            cursor: 'pointer',
+            cursor: atEnquiryLimit ? 'not-allowed' : 'pointer',
+            opacity: atEnquiryLimit ? 0.6 : 1,
             zIndex: 500,
           }}
         >
