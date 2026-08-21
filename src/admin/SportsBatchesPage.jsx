@@ -18,7 +18,7 @@ export default function SportsBatchesPage() {
   const [editingBatchId, setEditingBatchId] = useState(null);
   const [editBatchValue, setEditBatchValue] = useState('');
 
-  const [newBatchName, setNewBatchName] = useState('');
+  const [newBatchNames, setNewBatchNames] = useState({}); // { [sportId]: value } — one draft per sport since several can be expanded at once
   const [error, setError] = useState('');
 
   const addSport = async () => {
@@ -76,17 +76,18 @@ export default function SportsBatchesPage() {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-    setNewBatchName('');
+    setNewBatchNames(prev => { const next = { ...prev }; delete next[id]; return next; });
     setEditingBatchId(null);
   };
 
   const addBatch = async (sport) => {
-    if (!newBatchName.trim()) return;
-    const { error: err } = await supabase.from('batches').insert({ name: buildBatchKey(sport.name, newBatchName.trim()), academy_id: academyId });
+    const value = (newBatchNames[sport.id] || '').trim();
+    if (!value) return;
+    const { error: err } = await supabase.from('batches').insert({ name: buildBatchKey(sport.name, value), academy_id: academyId });
     if (err) { setError(err.message); return; }
     setError('');
-    logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `Added batch ${newBatchName.trim()} to ${sport.name}` });
-    setNewBatchName('');
+    logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `Added batch ${value} to ${sport.name}` });
+    setNewBatchNames(prev => ({ ...prev, [sport.id]: '' }));
     refresh();
   };
 
@@ -181,8 +182,8 @@ export default function SportsBatchesPage() {
                   <input
                     className="form-input"
                     placeholder="New batch name"
-                    value={newBatchName}
-                    onChange={e => setNewBatchName(e.target.value)}
+                    value={newBatchNames[s.id] || ''}
+                    onChange={e => setNewBatchNames(prev => ({ ...prev, [s.id]: e.target.value }))}
                     onKeyDown={e => { if (e.key === 'Enter') addBatch(s); }}
                   />
                   <button className="btn btn-primary btn-sm" onClick={() => addBatch(s)}>Add</button>
