@@ -106,11 +106,15 @@ export default function ClassLogPage() {
   const fetchEntries = async () => {
     if (!academyId) return;
     setLoading(true);
-    const { data } = await supabase
+    let query = supabase
       .from('class_log')
       .select('*')
       .eq('academy_id', academyId)
       .order('date', { ascending: false });
+    // Staff only ever see their own logged entries — scope it at the query
+    // level so their own data never even leaves the DB, not just hidden client-side.
+    if (!isAdmin) query = query.eq('created_by', staffName);
+    const { data } = await query;
     setEntries((data || []).map(c => ({
       id: c.id, date: c.date, sport: c.sport || '', batch: c.batch,
       inTime: c.in_time, outTime: c.out_time, duration: c.duration,
@@ -119,7 +123,45 @@ export default function ClassLogPage() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchEntries(); }, [academyId]);
+  useEffect(() => { fetchEntries(); }, [academyId, isAdmin, staffName]);
+
+  // Realtime: keep the list in sync as admin/staff add, edit, or delete entries.
+  useEffect(() => {
+    if (!academyId) return;
+    const channel = supabase
+      .channel(`class_log-${academyId}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'class_log',
+        filter: `academy_id=eq.${academyId}`,
+      }, (payload) => {
+        const toEntry = (c) => ({
+          id: c.id, date: c.date, sport: c.sport || '', batch: c.batch,
+          inTime: c.in_time, outTime: c.out_time, duration: c.duration,
+          note: c.note, by: c.created_by, at: c.created_at,
+        });
+        if (payload.eventType === 'DELETE') {
+          const oldRow = payload.old;
+          if (!oldRow) return;
+          setEntries(prev => prev.filter(e => e.id !== oldRow.id));
+        } else {
+          const row = payload.new;
+          if (!row) return;
+          // Staff channel receives every academy row (filter only supports
+          // academy_id) — drop anything that isn't their own entry.
+          if (!isAdmin && row.created_by !== staffName) return;
+          const entry = toEntry(row);
+          setEntries(prev => {
+            const idx = prev.findIndex(e => e.id === entry.id);
+            if (idx === -1) return [entry, ...prev];
+            const next = prev.slice();
+            next[idx] = entry;
+            return next;
+          });
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [academyId, isAdmin, staffName]);
 
   // Sport options — staff limited to assigned sports
   const sportOptions = useMemo(() => {
@@ -141,10 +183,16 @@ export default function ClassLogPage() {
     return list;
   }, [visibleBatches, filterSport, isAdmin, assignedBatches]);
 
-  // Staff-only batch scoping (a staff member with no assigned batches sees nothing)
-  const staffBatchNames = useMemo(() => (isAdmin ? null : assignedBatches), [isAdmin, assignedBatches]);
-
-  // Default to the first available sport & batch for the user, once options are ready
+  const filteredList = useMemo(() => {
+    let list = [...entries];
+    if (filterSport) list = list.filter(e => (e.sport || '') === filterSport);
+    if (filterBatch) list = list.filter(e => e.batch === filterBatch);
+    if (isAdmin && filterStaff) list = list.filter(e => e.by === filterStaff);
+    if (viewType === 'day' && filterDate) list = list.filter(e => e.date === filterDate);
+    else if (viewType === 'year' && filterYear) list = list.filter(e => (e.date || '').startsWith(filterYear + '-'));
+    else if (viewType === 'month' && filterMonth) list = list.filter(e => (e.date || '').startsWith(filterMonth));
+    return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [entries, filterSport, filterBatch, filterStaff, isAdmin, viewType, filterDate, filterMonth, filterYear]);
   useEffect(() => {
     if (defaultsApplied) return;
     if (!sportOptions.length) return;
@@ -161,19 +209,13 @@ export default function ClassLogPage() {
     return names.sort();
   }, [entries]);
 
-  const filteredList = useMemo(() => {
-    let list = [...entries];
-    if (staffBatchNames) {
-      list = staffBatchNames.length ? list.filter(e => staffBatchNames.includes(e.batch)) : [];
-    }
-    if (filterSport) list = list.filter(e => (e.sport || '') === filterSport);
-    if (filterBatch) list = list.filter(e => e.batch === filterBatch);
-    if (isAdmin && filterStaff) list = list.filter(e => e.by === filterStaff);
-    if (viewType === 'day' && filterDate) list = list.filter(e => e.date === filterDate);
-    else if (viewType === 'year' && filterYear) list = list.filter(e => (e.date || '').startsWith(filterYear + '-'));
-    else if (viewType === 'month' && filterMonth) list = list.filter(e => (e.date || '').startsWith(filterMonth));
-    return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }, [entries, staffBatchNames, filterSport, filterBatch, filterStaff, isAdmin, viewType, filterDate, filterMonth, filterYear]);
+  // Batch options for the EDIT form, cascading off editEntry.sport
+  const editBatchOptions = useMemo(() => {
+    if (!editEntry) return [];
+    let list = visibleBatches.filter(b => b.sport === editEntry.sport);
+    if (!isAdmin && assignedBatches.length) list = list.filter(b => assignedBatches.includes(b.name));
+    return list;
+  }, [visibleBatches, editEntry?.sport, isAdmin, assignedBatches]);
 
   const resetForm = () => setForm({ ...emptyForm, date: todayStr() });
 
@@ -238,7 +280,7 @@ export default function ClassLogPage() {
   const exportCols = ['Date', 'Sport', 'Batch', 'In Time', 'Out Time', 'Duration', 'Note', 'Logged By'];
 
   const handleExportPdf = () => {
-    const title = isAdmin ? 'Class Activity Log — All' : 'My Class Activity Log';
+    const title = isAdmin ? 'Class Log — All' : 'My Class Log';
     exportGenericPdf(title, exportCols, exportRows(), `ClassLog_${todayStr().replace(/-/g, '')}.pdf`);
   };
   const handleExportXlsx = () => {
@@ -257,7 +299,7 @@ export default function ClassLogPage() {
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 6, flexWrap: 'wrap' }}>
-        <div className="section-title" style={{ marginBottom: 0 }}>📋 Activity Log</div>
+        <div className="section-title" style={{ marginBottom: 0 }}>📋 Class Log</div>
         <div style={{ display: 'flex', gap: 6 }}>
           {canExport && (
             <>
@@ -384,11 +426,12 @@ export default function ClassLogPage() {
               <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
             </div>
 
+            <div style={{ marginBottom: 10 }}>
+              <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Date</label>
+              <input type="date" className="form-input" value={form.date} onChange={(e) => setForm(f => ({ ...f, date: e.target.value }))} />
+            </div>
+
             <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <div style={{ flex: 1 }}>
-                <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Date</label>
-                <input type="date" className="form-input" value={form.date} onChange={(e) => setForm(f => ({ ...f, date: e.target.value }))} />
-              </div>
               <div style={{ flex: 1 }}>
                 <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>🏆 Sport</label>
                 <select className="form-select" value={form.sport}
@@ -397,14 +440,13 @@ export default function ClassLogPage() {
                   {sportOptions.map(sp => <option key={sp} value={sp}>{sp}</option>)}
                 </select>
               </div>
-            </div>
-
-            <div style={{ marginBottom: 10 }}>
-              <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Batch</label>
-              <select className="form-select" value={form.batch} onChange={(e) => setForm(f => ({ ...f, batch: e.target.value }))}>
-                <option value="">{form.sport ? '— Select —' : '— Choose a sport first —'}</option>
-                {addBatchOptions.map(b => <option key={b.name} value={b.name}>{b.sport} : {b.batchLabel}</option>)}
-              </select>
+              <div style={{ flex: 1 }}>
+                <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Batch</label>
+                <select className="form-select" value={form.batch} onChange={(e) => setForm(f => ({ ...f, batch: e.target.value }))}>
+                  <option value="">{form.sport ? '— Select —' : '— sport first —'}</option>
+                  {addBatchOptions.map(b => <option key={b.name} value={b.name}>{b.batchLabel}</option>)}
+                </select>
+              </div>
             </div>
 
             <div style={{ background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
@@ -456,12 +498,23 @@ export default function ClassLogPage() {
                 onChange={(e) => setEditEntry(v => ({ ...v, date: e.target.value }))} />
             </div>
 
-            <div style={{ marginBottom: 10 }}>
-              <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Batch</label>
-              <select className="form-select" value={editEntry.batch || ''}
-                onChange={(e) => setEditEntry(v => ({ ...v, batch: e.target.value }))}>
-                {visibleBatches.map(b => <option key={b.name} value={b.name}>{b.sport} : {b.batchLabel}</option>)}
-              </select>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>🏆 Sport</label>
+                <select className="form-select" value={editEntry.sport || ''}
+                  onChange={(e) => setEditEntry(v => ({ ...v, sport: e.target.value, batch: '' }))}>
+                  <option value="">— Select —</option>
+                  {sportOptions.map(sp => <option key={sp} value={sp}>{sp}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Batch</label>
+                <select className="form-select" value={editEntry.batch || ''}
+                  onChange={(e) => setEditEntry(v => ({ ...v, batch: e.target.value }))}>
+                  <option value="">{editEntry.sport ? '— Select —' : '— sport first —'}</option>
+                  {editBatchOptions.map(b => <option key={b.name} value={b.name}>{b.batchLabel}</option>)}
+                </select>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
