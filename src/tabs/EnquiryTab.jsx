@@ -298,8 +298,14 @@ export default function EnquiryTab() {
 
   const removeEnquiry = async () => {
     if (!window.confirm(`Delete this query for ${detail.name}? This cannot be undone.`)) return;
-    await supabase.from('enquiries').delete().eq('id', detail.id);
+    const id = detail.id;
+    await supabase.from('enquiries').delete().eq('id', id);
     logEnquiry(`Deleted query for ${detail.name}`);
+    // Don't wait on the realtime round-trip for our own delete — remove it
+    // locally right away. Realtime will just re-confirm (or no-op) for us,
+    // and still handles it for other open tabs/devices.
+    setEnquiries(prev => prev.filter(q => q.id !== id));
+    setEnquiryCount(c => Math.max(0, c - 1));
     closeDetail();
   };
 
@@ -317,6 +323,8 @@ export default function EnquiryTab() {
       const q = enquiries.find(e => e.id === id);
       await supabase.from('enquiries').delete().eq('id', id);
       logEnquiry(`Converted query to student: "${q?.name || ''}"`);
+      setEnquiries(prev => prev.filter(e => e.id !== id));
+      setEnquiryCount(c => Math.max(0, c - 1));
     }
   };
 
