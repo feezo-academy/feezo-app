@@ -270,7 +270,7 @@ export default function ClassLogPage() {
   };
 
   const openEdit = (entry) => {
-    if (!isAdmin) return;
+    if (!isAdmin && entry.by !== staffName) return;
     setEditEntry({ ...entry });
   };
 
@@ -437,10 +437,12 @@ export default function ClassLogPage() {
                   ✍️ {e.by} · {e.at ? new Date(e.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
                 </div>
               </div>
-              {isAdmin && (
+              {(isAdmin || e.by === staffName) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
                   <button className="btn btn-primary" style={{ fontSize: 10, padding: '5px 8px' }} onClick={() => openEdit(e)}>✏️ Edit</button>
-                  <button className="btn" style={{ fontSize: 10, padding: '5px 8px', background: '#dc2626', color: '#fff' }} onClick={() => deleteEntry(e.id)}>🗑️ Delete</button>
+                  {isAdmin && (
+                    <button className="btn" style={{ fontSize: 10, padding: '5px 8px', background: '#dc2626', color: '#fff' }} onClick={() => deleteEntry(e.id)}>🗑️ Delete</button>
+                  )}
                 </div>
               )}
             </div>
@@ -451,7 +453,7 @@ export default function ClassLogPage() {
       {/* ── Add Modal ── */}
       {showAdd && (
         <div className="modal-overlay active" style={{ alignItems: 'center', padding: 16 }} onClick={() => setShowAdd(false)}>
-          <div className="modal" style={{ borderRadius: 18, maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ borderRadius: 18, width: '100%', maxWidth: 360, maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               Log a Class
               <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
@@ -517,7 +519,7 @@ export default function ClassLogPage() {
       {/* ── Edit Modal (admin only) ── */}
       {editEntry && (
         <div className="modal-overlay active" style={{ alignItems: 'center', padding: 16 }} onClick={() => setEditEntry(null)}>
-          <div className="modal" style={{ borderRadius: 18, maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ borderRadius: 18, width: '100%', maxWidth: 360, maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               Edit Entry
               <button className="modal-close" onClick={() => setEditEntry(null)}>×</button>
