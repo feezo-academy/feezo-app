@@ -78,10 +78,13 @@ export function AuthProvider({ children }) {
   const canViewContact = isAdmin || !!appUser?.can_view_contact;
   // Admins can always export PDF/XL; staff need the toggle explicitly granted in Staff Users.
   const canExport = isAdmin || !!appUser?.can_export;
+  // Admins can always edit any class log entry; staff need the toggle explicitly
+  // granted in Staff Users to edit even their own logged entries.
+  const canEditLogs = isAdmin || !!appUser?.can_edit_logs;
 
   const value = {
     user, appUser, academyId, loading,
-    isAdmin, assignedSports, assignedBatches, canViewContact, canExport,
+    isAdmin, assignedSports, assignedBatches, canViewContact, canExport, canEditLogs,
     login, logout, refreshAppUser: () => loadAppUser(user),
   };
 
