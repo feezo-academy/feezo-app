@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { to: '/attendance', label: 'Attendance', icon: '📝' },
   { to: '/fees', label: 'Fees', icon: '💳' },
   { to: '/enquiry', label: 'Enquiry', icon: '💬' },
-  { to: '/admin/activity', label: 'Activity Log', icon: '📋' },
+  { to: '/admin/activity', label: 'Class Log', icon: '📋' },
   { to: '/admin/performance', label: 'Performance', icon: '🏆' },
   { to: '/calendar', label: 'Calendar', icon: '📅' },
   { to: '/calendar/leave', label: 'Leave Request', icon: '📊' },
