@@ -286,16 +286,26 @@ export default function ClassLogPage() {
   };
 
   const saveEdit = async () => {
-    if (!canEditEntry(editEntry)) return;
+    if (!canEditEntry(editEntry)) {
+      alert("You don't have permission to edit this entry.");
+      return;
+    }
     if (!editEntry.date) { alert('Please select a date'); return; }
     if (!editEntry.batch) { alert('Please select a batch'); return; }
     const duration = calcDuration(editEntry.inTime, editEntry.outTime);
-    const { error } = await supabase.from('class_log').update({
+    const { data, error } = await supabase.from('class_log').update({
       date: editEntry.date, batch: editEntry.batch, sport: editEntry.sport || '',
       in_time: editEntry.inTime || '', out_time: editEntry.outTime || '',
       duration, note: (editEntry.note || '').trim(),
-    }).eq('id', editEntry.id);
+    }).eq('id', editEntry.id).select();
     if (error) { alert('Save failed: ' + error.message); return; }
+    // update() succeeds with an empty result (no error) when Supabase RLS
+    // silently blocks the write for this user — surface that distinctly so
+    // it isn't mistaken for a successful, no-op save.
+    if (!data || data.length === 0) {
+      alert("Save didn't go through — you may not have permission to edit this entry (check Supabase RLS policies for staff updates on class_log).");
+      return;
+    }
     logActivity({ academyId, actorId: appUser?.id, actorName: staffName, message: `Edited class log entry for ${editEntry.batch} on ${editEntry.date}` });
     setEditEntry(null);
     fetchEntries();
