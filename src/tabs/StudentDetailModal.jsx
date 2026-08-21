@@ -98,8 +98,26 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
             <span style={{ fontSize: 18 }}>👤</span>
             <span style={{ fontWeight: 800, fontSize: 16 }}>Student Details</span>
           </div>
-          <button onClick={onClose} aria-label="Close"
-            style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 15, color: 'var(--gray)' }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {canExport && (
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                aria-label="Download Profile PDF"
+                title="Download Profile PDF"
+                style={{
+                  width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)',
+                  border: '1px solid var(--border)', cursor: downloading ? 'wait' : 'pointer',
+                  fontSize: 14, color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  opacity: downloading ? 0.6 : 1,
+                }}
+              >
+                {downloading ? '…' : '⬇️'}
+              </button>
+            )}
+            <button onClick={onClose} aria-label="Close"
+              style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 15, color: 'var(--gray)' }}>✕</button>
+          </div>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '18px' }}>
@@ -159,14 +177,6 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
 
           <AchievementsSection studentId={student.id} academyId={academyId} canEdit={true} />
         </div>
-
-        {canExport && (
-          <div style={{ padding: '0 16px 12px', flexShrink: 0 }}>
-            <button className="btn btn-outline btn-sm" style={{ width: '100%', justifyContent: 'center' }} disabled={downloading} onClick={handleDownload}>
-              {downloading ? 'Generating…' : '⬇️ Download Profile PDF'}
-            </button>
-          </div>
-        )}
 
         <div style={{ display: 'flex', gap: 6, padding: 16, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
           <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={busy} onClick={() => { onClose(); onEdit(student); }}>✏️ Edit</button>
