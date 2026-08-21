@@ -14,6 +14,7 @@ const LIMIT_KEY_MAP = {
   batchesPerSport: 'batches_per_sport_limit',
   batches: 'batch_limit',
   enquiries: 'enquiry_limit',
+  classLogs: 'class_log_limit',
 };
 
 const FEATURE_LABELS = {
@@ -63,6 +64,7 @@ export function PlanProvider({ children }) {
     batchesPerSport: plan?.batches_per_sport_limit ?? null,
     batches: plan?.batch_limit ?? null,
     enquiries: plan?.enquiry_limit ?? null,
+    classLogs: plan?.class_log_limit ?? null,
     snapshotDays: plan?.snapshot_days ?? null,
   }), [plan]);
 
