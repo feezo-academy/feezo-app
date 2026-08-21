@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
+import { usePlan } from '../context/PlanContext';
 import { supabase } from '../lib/supabaseClient';
 import { logActivity } from '../lib/auditLog';
 import { parseBatchKey } from '../lib/batchKey';
 import { exportGenericPdf, exportGenericXlsx } from '../lib/exporters';
+import LimitGatedButton from '../components/LimitGatedButton';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -52,22 +54,22 @@ const MIN_OPTS = Array.from({ length: 12 }, (_, i) => pad(i * 5));
 // Supabase columns) doesn't need to change.
 function TimePicker12({ value, onChange, accentColor }) {
   const { h12, min, period } = to12(value);
-  const selStyle = { flex: 1, padding: '10px 6px', fontSize: 13, textAlign: 'center' };
+  const selStyle = { flex: 1, minWidth: 0, padding: '10px 4px', fontSize: 13, textAlign: 'center' };
   const set = (nh, nm, np) => onChange(to24(nh, nm, np));
   return (
-    <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0 }}>
       <select className="form-select" style={selStyle} value={h12}
         onChange={(e) => set(e.target.value, min || '00', period)}>
         <option value="">--</option>
         {HOUR_OPTS.map(h => <option key={h} value={h}>{h}</option>)}
       </select>
-      <span style={{ color: accentColor || 'var(--gray)', fontWeight: 700 }}>:</span>
+      <span style={{ color: accentColor || 'var(--gray)', fontWeight: 700, flexShrink: 0 }}>:</span>
       <select className="form-select" style={selStyle} value={min}
         onChange={(e) => set(h12 || '12', e.target.value, period)}>
         <option value="">--</option>
         {MIN_OPTS.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
-      <select className="form-select" style={{ ...selStyle, flex: '0 0 62px' }} value={period}
+      <select className="form-select" style={{ ...selStyle, flex: '0 0 54px', padding: '10px 2px' }} value={period}
         onChange={(e) => set(h12 || '12', min || '00', e.target.value)}>
         <option value="AM">AM</option>
         <option value="PM">PM</option>
@@ -77,7 +79,7 @@ function TimePicker12({ value, onChange, accentColor }) {
 }
 
 export default function ClassLogPage() {
-  const { academyId, isAdmin, appUser, assignedSports, assignedBatches, canExport } = useAuth();
+  const { academyId, isAdmin, appUser, assignedSports, assignedBatches, canExport, canEditLogs } = useAuth();
   const { visibleSports, visibleBatches } = useAcademyData();
 
   const [entries, setEntries] = useState([]);
@@ -103,6 +105,21 @@ export default function ClassLogPage() {
 
   const staffName = appUser?.name || appUser?.id || 'Unknown';
 
+  const { isAtLimit, limits, plan, nextPlanForLimit } = usePlan();
+  // Academy-wide total (not scoped to this user) — the plan caps how many
+  // class log rows the *academy* stores in total, admin + all staff combined.
+  const [classLogCount, setClassLogCount] = useState(0);
+  const atClassLogLimit = isAtLimit('classLogs', classLogCount);
+
+  const fetchClassLogCount = async () => {
+    if (!academyId) return;
+    const { count } = await supabase
+      .from('class_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('academy_id', academyId);
+    setClassLogCount(count ?? 0);
+  };
+
   const fetchEntries = async () => {
     if (!academyId) return;
     setLoading(true);
@@ -123,7 +140,7 @@ export default function ClassLogPage() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchEntries(); }, [academyId, isAdmin, staffName]);
+  useEffect(() => { fetchEntries(); fetchClassLogCount(); }, [academyId, isAdmin, staffName]);
 
   // Realtime: keep the list in sync as admin/staff add, edit, or delete entries.
   useEffect(() => {
@@ -143,11 +160,14 @@ export default function ClassLogPage() {
           const oldRow = payload.old;
           if (!oldRow) return;
           setEntries(prev => prev.filter(e => e.id !== oldRow.id));
+          setClassLogCount(c => Math.max(0, c - 1));
         } else {
           const row = payload.new;
           if (!row) return;
+          if (payload.eventType === 'INSERT') setClassLogCount(c => c + 1);
           // Staff channel receives every academy row (filter only supports
-          // academy_id) — drop anything that isn't their own entry.
+          // academy_id) — drop anything that isn't their own entry from the
+          // visible list (the count above still reflects the full academy).
           if (!isAdmin && row.created_by !== staffName) return;
           const entry = toEntry(row);
           setEntries(prev => {
@@ -220,11 +240,16 @@ export default function ClassLogPage() {
   const resetForm = () => setForm({ ...emptyForm, date: todayStr() });
 
   const openAdd = () => {
+    if (atClassLogLimit) return;
     resetForm();
     setShowAdd(true);
   };
 
   const saveNewEntry = async () => {
+    if (atClassLogLimit) {
+      alert(`Limit reached (${limits.classLogs} class log entries) on your ${plan?.name || 'current'} plan.`);
+      return;
+    }
     if (!form.date) { alert('Please select a date'); return; }
     if (!form.batch) { alert('Please select a batch'); return; }
     setSaving(true);
@@ -245,11 +270,12 @@ export default function ClassLogPage() {
   };
 
   const openEdit = (entry) => {
-    if (!isAdmin) return;
+    if (!isAdmin && !(canEditLogs && entry.by === staffName)) return;
     setEditEntry({ ...entry });
   };
 
   const saveEdit = async () => {
+    if (!isAdmin && !(canEditLogs && editEntry.by === staffName)) return;
     if (!editEntry.date) { alert('Please select a date'); return; }
     if (!editEntry.batch) { alert('Please select a batch'); return; }
     const duration = calcDuration(editEntry.inTime, editEntry.outTime);
@@ -307,7 +333,13 @@ export default function ClassLogPage() {
               <button className="btn" style={{ background: '#16a34a', color: '#fff', fontSize: 11, padding: '7px 10px' }} onClick={handleExportXlsx}>XL</button>
             </>
           )}
-          <button className="btn btn-primary" style={{ fontSize: 12, padding: '7px 12px' }} onClick={openAdd}>+ Add</button>
+          <LimitGatedButton
+            resource="classLogs"
+            currentCount={classLogCount}
+            className="btn btn-primary"
+            style={{ fontSize: 12, padding: '7px 12px' }}
+            onClick={openAdd}
+          >+ Add</LimitGatedButton>
         </div>
       </div>
 
@@ -406,10 +438,12 @@ export default function ClassLogPage() {
                   ✍️ {e.by} · {e.at ? new Date(e.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
                 </div>
               </div>
-              {isAdmin && (
+              {(isAdmin || (canEditLogs && e.by === staffName)) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
                   <button className="btn btn-primary" style={{ fontSize: 10, padding: '5px 8px' }} onClick={() => openEdit(e)}>✏️ Edit</button>
-                  <button className="btn" style={{ fontSize: 10, padding: '5px 8px', background: '#dc2626', color: '#fff' }} onClick={() => deleteEntry(e.id)}>🗑️ Delete</button>
+                  {isAdmin && (
+                    <button className="btn" style={{ fontSize: 10, padding: '5px 8px', background: '#dc2626', color: '#fff' }} onClick={() => deleteEntry(e.id)}>🗑️ Delete</button>
+                  )}
                 </div>
               )}
             </div>
@@ -419,8 +453,8 @@ export default function ClassLogPage() {
 
       {/* ── Add Modal ── */}
       {showAdd && (
-        <div className="modal-overlay active" style={{ alignItems: 'center', padding: 16 }} onClick={() => setShowAdd(false)}>
-          <div className="modal" style={{ borderRadius: 18, maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay active" style={{ alignItems: 'center', padding: '4vw' }} onClick={() => setShowAdd(false)}>
+          <div className="modal" style={{ borderRadius: 18, width: '100%', maxWidth: 'min(360px, 100%)', maxHeight: '92vh', overflowY: 'auto', boxSizing: 'border-box', padding: 'clamp(12px, 4vw, 20px)' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               Log a Class
               <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
@@ -431,18 +465,18 @@ export default function ClassLogPage() {
               <input type="date" className="form-input" value={form.date} onChange={(e) => setForm(f => ({ ...f, date: e.target.value }))} />
             </div>
 
-            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 130px', minWidth: 0 }}>
                 <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>🏆 Sport</label>
-                <select className="form-select" value={form.sport}
+                <select className="form-select" style={{ width: '100%', minWidth: 0 }} value={form.sport}
                   onChange={(e) => setForm(f => ({ ...f, sport: e.target.value, batch: '' }))}>
                   <option value="">— Select —</option>
                   {sportOptions.map(sp => <option key={sp} value={sp}>{sp}</option>)}
                 </select>
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: '1 1 130px', minWidth: 0 }}>
                 <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Batch</label>
-                <select className="form-select" value={form.batch} onChange={(e) => setForm(f => ({ ...f, batch: e.target.value }))}>
+                <select className="form-select" style={{ width: '100%', minWidth: 0 }} value={form.batch} onChange={(e) => setForm(f => ({ ...f, batch: e.target.value }))}>
                   <option value="">{form.sport ? '— Select —' : '— sport first —'}</option>
                   {addBatchOptions.map(b => <option key={b.name} value={b.name}>{b.batchLabel}</option>)}
                 </select>
@@ -451,12 +485,12 @@ export default function ClassLogPage() {
 
             <div style={{ background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', letterSpacing: '.4px', marginBottom: 8 }}>⏱ CLASS TIMING</div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <div style={{ flex: 1 }}>
+              <div className="modal-timing-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 140px', minWidth: 0 }}>
                   <label style={{ display: 'block', fontSize: 12, marginBottom: 3, color: '#16a34a' }}>🟢 In Time</label>
                   <TimePicker12 value={form.inTime} onChange={(v) => setForm(f => ({ ...f, inTime: v }))} accentColor="#16a34a" />
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: '1 1 140px', minWidth: 0 }}>
                   <label style={{ display: 'block', fontSize: 12, marginBottom: 3, color: '#dc2626' }}>🔴 Out Time</label>
                   <TimePicker12 value={form.outTime} onChange={(v) => setForm(f => ({ ...f, outTime: v }))} accentColor="#dc2626" />
                 </div>
@@ -467,7 +501,7 @@ export default function ClassLogPage() {
               <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>
                 Notes <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span>
               </label>
-              <textarea className="form-input" rows={7} style={{ resize: 'vertical', minHeight: 130 }}
+              <textarea className="form-input" rows={4} style={{ resize: 'vertical', minHeight: 80, width: '100%', boxSizing: 'border-box' }}
                 placeholder="e.g. Warm-up, basics, drills…"
                 value={form.note} onChange={(e) => setForm(f => ({ ...f, note: e.target.value }))} />
             </div>
@@ -485,8 +519,8 @@ export default function ClassLogPage() {
 
       {/* ── Edit Modal (admin only) ── */}
       {editEntry && (
-        <div className="modal-overlay active" style={{ alignItems: 'center', padding: 16 }} onClick={() => setEditEntry(null)}>
-          <div className="modal" style={{ borderRadius: 18, maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay active" style={{ alignItems: 'center', padding: '4vw' }} onClick={() => setEditEntry(null)}>
+          <div className="modal" style={{ borderRadius: 18, width: '100%', maxWidth: 'min(360px, 100%)', maxHeight: '92vh', overflowY: 'auto', boxSizing: 'border-box', padding: 'clamp(12px, 4vw, 20px)' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               Edit Entry
               <button className="modal-close" onClick={() => setEditEntry(null)}>×</button>
@@ -498,18 +532,18 @@ export default function ClassLogPage() {
                 onChange={(e) => setEditEntry(v => ({ ...v, date: e.target.value }))} />
             </div>
 
-            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 130px', minWidth: 0 }}>
                 <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>🏆 Sport</label>
-                <select className="form-select" value={editEntry.sport || ''}
+                <select className="form-select" style={{ width: '100%', minWidth: 0 }} value={editEntry.sport || ''}
                   onChange={(e) => setEditEntry(v => ({ ...v, sport: e.target.value, batch: '' }))}>
                   <option value="">— Select —</option>
                   {sportOptions.map(sp => <option key={sp} value={sp}>{sp}</option>)}
                 </select>
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: '1 1 130px', minWidth: 0 }}>
                 <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Batch</label>
-                <select className="form-select" value={editEntry.batch || ''}
+                <select className="form-select" style={{ width: '100%', minWidth: 0 }} value={editEntry.batch || ''}
                   onChange={(e) => setEditEntry(v => ({ ...v, batch: e.target.value }))}>
                   <option value="">{editEntry.sport ? '— Select —' : '— sport first —'}</option>
                   {editBatchOptions.map(b => <option key={b.name} value={b.name}>{b.batchLabel}</option>)}
@@ -517,12 +551,12 @@ export default function ClassLogPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 140px', minWidth: 0 }}>
                 <label style={{ display: 'block', fontSize: 12, marginBottom: 3, color: '#16a34a' }}>🟢 In Time</label>
                 <TimePicker12 value={editEntry.inTime || ''} onChange={(v) => setEditEntry(en => ({ ...en, inTime: v }))} accentColor="#16a34a" />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: '1 1 140px', minWidth: 0 }}>
                 <label style={{ display: 'block', fontSize: 12, marginBottom: 3, color: '#dc2626' }}>🔴 Out Time</label>
                 <TimePicker12 value={editEntry.outTime || ''} onChange={(v) => setEditEntry(en => ({ ...en, outTime: v }))} accentColor="#dc2626" />
               </div>
@@ -530,7 +564,7 @@ export default function ClassLogPage() {
 
             <div style={{ marginBottom: 12 }}>
               <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Notes</label>
-              <textarea className="form-input" rows={7} style={{ resize: 'vertical', minHeight: 130 }}
+              <textarea className="form-input" rows={4} style={{ resize: 'vertical', minHeight: 80, width: '100%', boxSizing: 'border-box' }}
                 value={editEntry.note || ''} onChange={(e) => setEditEntry(v => ({ ...v, note: e.target.value }))} />
             </div>
 
