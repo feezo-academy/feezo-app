@@ -27,6 +27,10 @@ import ClassLogPage from './admin/ClassLogPage';
 import LeaveCountPage from './admin/LeaveCountPage';
 import StaffLeavePage from './admin/StaffLeavePage';
 
+// Apply the saved theme as soon as the app's JS loads, before anything renders.
+const savedTheme = localStorage.getItem('feezo-theme') || 'dark';
+document.body.classList.toggle('dark-theme', savedTheme === 'dark');
+
 function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { academy } = useAcademyData();
