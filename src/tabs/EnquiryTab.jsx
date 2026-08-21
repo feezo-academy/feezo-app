@@ -312,18 +312,16 @@ export default function EnquiryTab() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>💬 Enquiries</div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {isAdmin && (
-            <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
-              <button
-                onClick={() => setView('active')}
-                style={{ padding: '5px 10px', fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', background: view === 'active' ? 'var(--accent2)' : 'transparent', color: view === 'active' ? '#fff' : 'var(--gray)' }}
-              >Active</button>
-              <button
-                onClick={() => setView('archive')}
-                style={{ padding: '5px 10px', fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', background: view === 'archive' ? 'var(--accent2)' : 'transparent', color: view === 'archive' ? '#fff' : 'var(--gray)' }}
-              >🗄️ Archive</button>
-            </div>
-          )}
+          <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+            <button
+              onClick={() => setView('active')}
+              style={{ padding: '5px 10px', fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', background: view === 'active' ? 'var(--accent2)' : 'transparent', color: view === 'active' ? '#fff' : 'var(--gray)' }}
+            >Active</button>
+            <button
+              onClick={() => setView('archive')}
+              style={{ padding: '5px 10px', fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', background: view === 'archive' ? 'var(--accent2)' : 'transparent', color: view === 'archive' ? '#fff' : 'var(--gray)' }}
+            >🗄️ Archive</button>
+          </div>
         </div>
       </div>
 
@@ -541,7 +539,7 @@ export default function EnquiryTab() {
                 )}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={startEdit}>✏️ Edit</button>
-                  {isAdmin && <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={toggleArchive}>{detail.archived ? '♻️ Restore' : '🗄️ Archive'}</button>}
+                  <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={toggleArchive}>{detail.archived ? '♻️ Restore' : '🗄️ Archive'}</button>
                 </div>
                 {isAdmin && (
                   <button className="btn btn-sm" style={{ width: '100%', background: 'var(--red, #dc2626)', color: '#fff', border: 'none' }} onClick={removeEnquiry}>🗑️ Delete Query</button>
