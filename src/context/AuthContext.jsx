@@ -26,11 +26,29 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession().then(({ data }) => {
       const u = data.session ? data.session.user : null;
       setUser(u);
+      // Realtime authenticates its websocket once at connect time using
+      // whatever token is current then. On the very first load, sync it
+      // explicitly so a long-open tab doesn't start life on a token that's
+      // about to expire.
+      if (data.session?.access_token) {
+        supabase.realtime.setAuth(data.session.access_token);
+      }
       loadAppUser(u).finally(() => setLoading(false));
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session ? session.user : null;
       setUser(u);
+      // Supabase silently rotates the access token roughly every hour.
+      // The realtime client does NOT pick that up on its own — without this,
+      // an open tab's websocket keeps using the old JWT to evaluate RLS on
+      // incoming broadcasts, and once that JWT expires the tab stops
+      // receiving realtime events (its own writes still work, since those
+      // go through a fresh REST call, not the socket). This is why it looked
+      // like only "receiving" broke, not "sending", and why a refresh fixed
+      // it — a refresh reconnects the socket with a fresh token.
+      if (session?.access_token) {
+        supabase.realtime.setAuth(session.access_token);
+      }
       loadAppUser(u);
     });
     return () => sub.subscription.unsubscribe();
