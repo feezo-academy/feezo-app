@@ -7,6 +7,7 @@ const RESOURCE_LABELS = {
   batches: 'batches',
   batchesPerSport: 'batches per sport',
   enquiries: 'enquiries',
+  classLogs: 'class log entries',
 };
 
 // Drop-in replacement for a plain "+ Add" button. Pass the resource key
