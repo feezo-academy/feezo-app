@@ -1,12 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { takeSnapshot, parseRetentionDays, pruneOldSnapshots } from '../lib/snapshot';
 
 const THEME_KEY = 'feezo-theme';
 
 function applyTheme(theme) {
   document.body.classList.toggle('dark-theme', theme === 'dark');
 }
+
+// Apply the saved theme as soon as this module loads (i.e. as soon as the
+// app's JS bundle runs) — not only when SettingsModal happens to mount.
+// This fixes the theme resetting to default on a hard page refresh, when
+// the modal isn't open yet to apply it via its own useEffect below.
+applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+
+const fmtDateTime = (iso) => {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+};
 
 export default function SettingsModal({ onClose }) {
   const { isAdmin, academyId } = useAuth();
@@ -20,6 +33,8 @@ export default function SettingsModal({ onClose }) {
   const [snapshots, setSnapshots] = useState([]);
   const [snapLoading, setSnapLoading] = useState(false);
   const [snapping, setSnapping] = useState(false);
+  const [restoringId, setRestoringId] = useState(null); // snapshot id currently restoring
+  const [restoreResult, setRestoreResult] = useState(null); // { snapshot_date, completed, rejected, results }
 
   useEffect(() => { applyTheme(theme); }, [theme]);
 
@@ -52,9 +67,22 @@ export default function SettingsModal({ onClose }) {
 
   const passwordsMatch = newPass.length > 0 && newPass === confirmPass;
 
+  // Looks up the academy's plan, then that plan's snapshot retention window
+  // (parsed from its features array, e.g. "snapshots_7day" -> 7 days).
+  // Falls back to the most conservative window (7 days) if the plan code
+  // isn't found in the plans table (e.g. a 'trial' plan not listed there).
+  const loadRetentionDays = async () => {
+    const { data: academy } = await supabase.from('academies').select('plan').eq('id', academyId).single();
+    const planCode = academy?.plan || 'basic';
+    const { data: planRow } = await supabase.from('plans').select('features').eq('code', planCode).single();
+    return planRow ? parseRetentionDays(planRow.features) : 7;
+  };
+
   const loadSnapshots = async () => {
     if (!academyId) return;
     setSnapLoading(true);
+    const days = await loadRetentionDays();
+    await pruneOldSnapshots(academyId, days);
     const { data } = await supabase.from('snapshots').select('id,snap_key,label,created_at')
       .eq('academy_id', academyId).order('created_at', { ascending: false });
     setSnapshots(data || []);
@@ -62,54 +90,10 @@ export default function SettingsModal({ onClose }) {
   };
   useEffect(() => { if (isAdmin) loadSnapshots(); }, [isAdmin, academyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const takeSnapshot = async () => {
+  const handleSnapNow = async () => {
     setSnapping(true);
     try {
-      const [
-        academyRow, students, fees, batches, sports, enquiries,
-        appUsers, attendance, attendanceDayStatus, classLog, courses,
-        leaveRequests, msgLogs, achievements, weekSchedules, auditLog,
-      ] = await Promise.all([
-        supabase.from('academies').select('*').eq('id', academyId),
-        supabase.from('students').select('*').eq('academy_id', academyId),
-        supabase.from('fees').select('*').eq('academy_id', academyId),
-        supabase.from('batches').select('*').eq('academy_id', academyId),
-        supabase.from('sports').select('*').eq('academy_id', academyId),
-        supabase.from('enquiries').select('*').eq('academy_id', academyId),
-        supabase.from('app_users').select('*').eq('academy_id', academyId),
-        supabase.from('attendance').select('*').eq('academy_id', academyId),
-        supabase.from('attendance_day_status').select('*').eq('academy_id', academyId),
-        supabase.from('class_log').select('*').eq('academy_id', academyId),
-        supabase.from('courses').select('*').eq('academy_id', academyId),
-        supabase.from('leave_requests').select('*').eq('academy_id', academyId),
-        supabase.from('msg_logs').select('*').eq('academy_id', academyId),
-        supabase.from('achievements').select('*').eq('academy_id', academyId),
-        supabase.from('week_schedules').select('*').eq('academy_id', academyId),
-        supabase.from('audit_log').select('*').eq('academy_id', academyId),
-      ]);
-      const snapKey = new Date().toISOString().slice(0, 10) + '-' + Date.now();
-      const { error } = await supabase.from('snapshots').insert({
-        academy_id: academyId, snap_key: snapKey, label: 'manual',
-        data: {
-          academies: academyRow.data || [],
-          students: students.data || [],
-          fees: fees.data || [],
-          batches: batches.data || [],
-          sports: sports.data || [],
-          enquiries: enquiries.data || [],
-          app_users: appUsers.data || [],
-          attendance: attendance.data || [],
-          attendance_day_status: attendanceDayStatus.data || [],
-          class_log: classLog.data || [],
-          courses: courses.data || [],
-          leave_requests: leaveRequests.data || [],
-          msg_logs: msgLogs.data || [],
-          achievements: achievements.data || [],
-          week_schedules: weekSchedules.data || [],
-          audit_log: auditLog.data || [],
-        },
-      });
-      if (error) throw error;
+      await takeSnapshot(academyId, 'manual');
       await loadSnapshots();
     } catch (e) {
       alert('Snapshot failed: ' + e.message);
@@ -123,6 +107,40 @@ export default function SettingsModal({ onClose }) {
     const { error } = await supabase.from('snapshots').delete().eq('id', id);
     if (error) { alert('Delete failed: ' + error.message); return; }
     setSnapshots(prev => prev.filter(s => s.id !== id));
+  };
+
+  // Two required warnings before any data is touched:
+  //  1. States the actual date/time of the snapshot being restored.
+  //  2. A final "are you sure" confirmation.
+  // Only after both are accepted does the restore Edge Function get called.
+  const restoreSnapshot = async (snap) => {
+    const when = fmtDateTime(snap.created_at);
+
+    const ack1 = confirm(`This will restore your data to how it was on ${when}. Anything changed since then will be overwritten.`);
+    if (!ack1) return;
+
+    const ack2 = confirm('Confirm: proceed with restoring this snapshot? This cannot be undone.');
+    if (!ack2) return;
+
+    setRestoringId(snap.id);
+    try {
+      const { data, error: err } = await supabase.functions.invoke('restore-snapshot', {
+        body: { snapshot_id: snap.id },
+      });
+      if (err) {
+        let msg = err.message || 'Restore failed';
+        if (err.context && typeof err.context.json === 'function') {
+          try { const body = await err.context.json(); if (body?.error) msg = body.error; } catch { /* not JSON */ }
+        }
+        throw new Error(msg);
+      }
+      if (data?.error) throw new Error(data.error);
+      setRestoreResult(data); // triggers the results popup
+    } catch (e) {
+      alert('Restore failed: ' + e.message);
+    } finally {
+      setRestoringId(null);
+    }
   };
 
   return (
@@ -156,10 +174,10 @@ export default function SettingsModal({ onClose }) {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div className="section-title" style={{ marginBottom: 0, fontSize: 13 }}>📸 Daily Snapshots</div>
-                <button className="btn btn-primary btn-xs" onClick={takeSnapshot} disabled={snapping}>{snapping ? 'Saving…' : '📸 Snap Now'}</button>
+                <button className="btn btn-primary btn-xs" onClick={handleSnapNow} disabled={snapping}>{snapping ? 'Saving…' : '📸 Snap Now'}</button>
               </div>
               <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 10, lineHeight: 1.6 }}>
-                Saves a full restore point of this academy: profile, students, fees, batches, sports, enquiries, staff, attendance, class logs, courses, leave requests, achievements, schedules, message logs & activity log.
+                Saves a full restore point of this academy: profile, students, fees, batches, sports, enquiries, staff, attendance, class logs, courses, leave requests, achievements, schedules, message logs & activity log. Older snapshots are automatically removed once they fall outside your plan's retention window.
               </div>
               <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
                 {snapLoading && <div style={{ padding: 14, fontSize: 12, color: 'var(--gray)' }}>Loading…</div>}
@@ -167,6 +185,7 @@ export default function SettingsModal({ onClose }) {
                 {snapshots.map(s => {
                   const d = new Date(s.created_at);
                   const isManual = s.label === 'manual';
+                  const isRestoringThis = restoringId === s.id;
                   return (
                     <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: '1px solid var(--border)', gap: 8 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -175,13 +194,22 @@ export default function SettingsModal({ onClose }) {
                           {d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
-                      <button className="btn btn-danger btn-xs" onClick={() => deleteSnapshot(s.id)}>🗑️</button>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <button
+                          className="btn btn-outline btn-xs"
+                          onClick={() => restoreSnapshot(s)}
+                          disabled={restoringId !== null}
+                        >
+                          {isRestoringThis ? 'Restoring…' : '♻️ Restore'}
+                        </button>
+                        <button className="btn btn-danger btn-xs" onClick={() => deleteSnapshot(s.id)} disabled={restoringId !== null}>🗑️</button>
+                      </div>
                     </div>
                   );
                 })}
               </div>
               <div style={{ fontSize: 10, color: 'var(--graydk)', marginTop: 8 }}>
-                Restore isn't available from the app yet — contact support with the snapshot date if you need one restored.
+                Restoring overwrites current data with the snapshot's data — this cannot be undone.
               </div>
             </div>
           </div>
@@ -233,6 +261,42 @@ export default function SettingsModal({ onClose }) {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restore results popup: how many tables completed vs rejected */}
+      {restoreResult && (
+        <div className="modal-overlay active" style={{ zIndex: 1200 }} onClick={e => e.target === e.currentTarget && setRestoreResult(null)}>
+          <div className="modal" style={{ maxWidth: 360 }}>
+            <div className="modal-title">
+              <span>♻️ Restore Complete</span>
+              <button className="modal-close" onClick={() => setRestoreResult(null)}>×</button>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 10 }}>
+              Restored to: {fmtDateTime(restoreResult.snapshot_date)}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <div style={{ flex: 1, background: 'var(--royal2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--green)' }}>{restoreResult.completed}</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)' }}>Completed</div>
+              </div>
+              <div style={{ flex: 1, background: 'var(--royal2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: restoreResult.rejected > 0 ? 'var(--red)' : 'var(--gray)' }}>{restoreResult.rejected}</div>
+                <div style={{ fontSize: 11, color: 'var(--gray)' }}>Rejected</div>
+              </div>
+            </div>
+            {restoreResult.rejected > 0 && (
+              <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 12 }}>
+                {restoreResult.results.filter(r => r.status === 'rejected').map(r => (
+                  <div key={r.table} style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--red)' }}>{r.table}</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)' }}>{r.error}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={() => setRestoreResult(null)}>OK</button>
           </div>
         </div>
       )}
