@@ -54,7 +54,7 @@ const MIN_OPTS = Array.from({ length: 12 }, (_, i) => pad(i * 5));
 // Supabase columns) doesn't need to change.
 function TimePicker12({ value, onChange, accentColor }) {
   const { h12, min, period } = to12(value);
-  const selStyle = { flex: 1, minWidth: 0, padding: '10px 4px', fontSize: 13, textAlign: 'center' };
+  const selStyle = { flex: 1, minWidth: 0, padding: '8px 3px', fontSize: 11.5, textAlign: 'center' };
   const set = (nh, nm, np) => onChange(to24(nh, nm, np));
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0 }}>
@@ -488,56 +488,56 @@ export default function ClassLogPage() {
                 <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
               </div>
 
-              <div style={{ marginBottom: 10 }}>
-                <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Date</label>
-                <input type="date" className="form-input" value={form.date} onChange={(e) => setForm(f => ({ ...f, date: e.target.value }))} />
-              </div>
-
-              <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 130px', minWidth: 0 }}>
-                  <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>🏆 Sport</label>
-                  <select className="form-select" style={{ width: '100%', minWidth: 0 }} value={form.sport}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 100px', minWidth: 0 }}>
+                  <label className="form-label" style={{ display: 'block', fontSize: 10.5, marginBottom: 2 }}>Date</label>
+                  <input type="date" className="form-input" style={{ width: '100%', minWidth: 0, fontSize: 11, padding: '7px 6px', boxSizing: 'border-box' }}
+                    value={form.date} onChange={(e) => setForm(f => ({ ...f, date: e.target.value }))} />
+                </div>
+                <div style={{ flex: '1 1 90px', minWidth: 0 }}>
+                  <label className="form-label" style={{ display: 'block', fontSize: 10.5, marginBottom: 2 }}>🏆 Sport</label>
+                  <select className="form-select" style={{ width: '100%', minWidth: 0, fontSize: 11, padding: '7px 6px' }} value={form.sport}
                     onChange={(e) => setForm(f => ({ ...f, sport: e.target.value, batch: '' }))}>
                     <option value="">— Select —</option>
                     {sportOptions.map(sp => <option key={sp} value={sp}>{sp}</option>)}
                   </select>
                 </div>
-                <div style={{ flex: '1 1 130px', minWidth: 0 }}>
-                  <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Batch</label>
-                  <select className="form-select" style={{ width: '100%', minWidth: 0 }} value={form.batch} onChange={(e) => setForm(f => ({ ...f, batch: e.target.value }))}>
+                <div style={{ flex: '1 1 90px', minWidth: 0 }}>
+                  <label className="form-label" style={{ display: 'block', fontSize: 10.5, marginBottom: 2 }}>Batch</label>
+                  <select className="form-select" style={{ width: '100%', minWidth: 0, fontSize: 11, padding: '7px 6px' }} value={form.batch} onChange={(e) => setForm(f => ({ ...f, batch: e.target.value }))}>
                     <option value="">{form.sport ? '— Select —' : '— sport first —'}</option>
                     {addBatchOptions.map(b => <option key={b.name} value={b.name}>{b.batchLabel}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div style={{ background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', letterSpacing: '.4px', marginBottom: 8 }}>⏱ CLASS TIMING</div>
-                <div className="modal-timing-row" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <div style={{ flex: '1 1 140px', minWidth: 0 }}>
-                    <label style={{ display: 'block', fontSize: 12, marginBottom: 3, color: '#16a34a' }}>🟢 In Time</label>
+              <div style={{ background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px', marginBottom: 10 }}>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--gray)', letterSpacing: '.4px', marginBottom: 6 }}>⏱ CLASS TIMING</div>
+                <div className="modal-timing-row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                    <label style={{ display: 'block', fontSize: 10.5, marginBottom: 2, color: '#16a34a' }}>🟢 In Time</label>
                     <TimePicker12 value={form.inTime} onChange={(v) => setForm(f => ({ ...f, inTime: v }))} accentColor="#16a34a" />
                   </div>
-                  <div style={{ flex: '1 1 140px', minWidth: 0 }}>
-                    <label style={{ display: 'block', fontSize: 12, marginBottom: 3, color: '#dc2626' }}>🔴 Out Time</label>
+                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                    <label style={{ display: 'block', fontSize: 10.5, marginBottom: 2, color: '#dc2626' }}>🔴 Out Time</label>
                     <TimePicker12 value={form.outTime} onChange={(v) => setForm(f => ({ ...f, outTime: v }))} accentColor="#dc2626" />
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>
+                <label className="form-label" style={{ display: 'block', fontSize: 10.5, marginBottom: 2 }}>
                   Notes <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span>
                 </label>
-                <textarea className="form-input" rows={4} style={{ resize: 'vertical', minHeight: 80, width: '100%', boxSizing: 'border-box' }}
+                <textarea className="form-input" rows={4} style={{ resize: 'vertical', minHeight: 70, width: '100%', boxSizing: 'border-box', fontSize: 11 }}
                   placeholder="e.g. Warm-up, basics, drills…"
                   value={form.note} onChange={(e) => setForm(f => ({ ...f, note: e.target.value }))} />
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: 10, padding: 'clamp(12px, 4vw, 20px)', paddingTop: 10, borderTop: '1px solid var(--border)', flex: '0 0 auto' }}>
-              <button className="btn btn-outline" style={{ flex: 1, padding: 11 }} onClick={() => setShowAdd(false)}>Cancel</button>
-              <button className="btn btn-primary" style={{ flex: 2, padding: 11 }} disabled={saving} onClick={saveNewEntry}>
+              <button className="btn btn-outline" style={{ flex: 1, padding: 10, fontSize: 12 }} onClick={() => setShowAdd(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 2, padding: 10, fontSize: 12 }} disabled={saving} onClick={saveNewEntry}>
                 {saving ? 'Saving…' : '💾 Save Entry'}
               </button>
             </div>
@@ -572,24 +572,23 @@ export default function ClassLogPage() {
                 <button className="modal-close" onClick={() => setEditEntry(null)}>×</button>
               </div>
 
-              <div style={{ marginBottom: 10 }}>
-                <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Date</label>
-                <input type="date" className="form-input" value={editEntry.date || ''}
-                  onChange={(e) => setEditEntry(v => ({ ...v, date: e.target.value }))} />
-              </div>
-
-              <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 130px', minWidth: 0 }}>
-                  <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>🏆 Sport</label>
-                  <select className="form-select" style={{ width: '100%', minWidth: 0 }} value={editEntry.sport || ''}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 100px', minWidth: 0 }}>
+                  <label className="form-label" style={{ display: 'block', fontSize: 10.5, marginBottom: 2 }}>Date</label>
+                  <input type="date" className="form-input" style={{ width: '100%', minWidth: 0, fontSize: 11, padding: '7px 6px', boxSizing: 'border-box' }}
+                    value={editEntry.date || ''} onChange={(e) => setEditEntry(v => ({ ...v, date: e.target.value }))} />
+                </div>
+                <div style={{ flex: '1 1 90px', minWidth: 0 }}>
+                  <label className="form-label" style={{ display: 'block', fontSize: 10.5, marginBottom: 2 }}>🏆 Sport</label>
+                  <select className="form-select" style={{ width: '100%', minWidth: 0, fontSize: 11, padding: '7px 6px' }} value={editEntry.sport || ''}
                     onChange={(e) => setEditEntry(v => ({ ...v, sport: e.target.value, batch: '' }))}>
                     <option value="">— Select —</option>
                     {sportOptions.map(sp => <option key={sp} value={sp}>{sp}</option>)}
                   </select>
                 </div>
-                <div style={{ flex: '1 1 130px', minWidth: 0 }}>
-                  <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Batch</label>
-                  <select className="form-select" style={{ width: '100%', minWidth: 0 }} value={editEntry.batch || ''}
+                <div style={{ flex: '1 1 90px', minWidth: 0 }}>
+                  <label className="form-label" style={{ display: 'block', fontSize: 10.5, marginBottom: 2 }}>Batch</label>
+                  <select className="form-select" style={{ width: '100%', minWidth: 0, fontSize: 11, padding: '7px 6px' }} value={editEntry.batch || ''}
                     onChange={(e) => setEditEntry(v => ({ ...v, batch: e.target.value }))}>
                     <option value="">{editEntry.sport ? '— Select —' : '— sport first —'}</option>
                     {editBatchOptions.map(b => <option key={b.name} value={b.name}>{b.batchLabel}</option>)}
@@ -597,27 +596,30 @@ export default function ClassLogPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 140px', minWidth: 0 }}>
-                  <label style={{ display: 'block', fontSize: 12, marginBottom: 3, color: '#16a34a' }}>🟢 In Time</label>
-                  <TimePicker12 value={editEntry.inTime || ''} onChange={(v) => setEditEntry(en => ({ ...en, inTime: v }))} accentColor="#16a34a" />
-                </div>
-                <div style={{ flex: '1 1 140px', minWidth: 0 }}>
-                  <label style={{ display: 'block', fontSize: 12, marginBottom: 3, color: '#dc2626' }}>🔴 Out Time</label>
-                  <TimePicker12 value={editEntry.outTime || ''} onChange={(v) => setEditEntry(en => ({ ...en, outTime: v }))} accentColor="#dc2626" />
+              <div style={{ background: 'var(--card2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px', marginBottom: 10 }}>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--gray)', letterSpacing: '.4px', marginBottom: 6 }}>⏱ CLASS TIMING</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                    <label style={{ display: 'block', fontSize: 10.5, marginBottom: 2, color: '#16a34a' }}>🟢 In Time</label>
+                    <TimePicker12 value={editEntry.inTime || ''} onChange={(v) => setEditEntry(en => ({ ...en, inTime: v }))} accentColor="#16a34a" />
+                  </div>
+                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                    <label style={{ display: 'block', fontSize: 10.5, marginBottom: 2, color: '#dc2626' }}>🔴 Out Time</label>
+                    <TimePicker12 value={editEntry.outTime || ''} onChange={(v) => setEditEntry(en => ({ ...en, outTime: v }))} accentColor="#dc2626" />
+                  </div>
                 </div>
               </div>
 
               <div>
-                <label className="form-label" style={{ display: 'block', fontSize: 12, marginBottom: 3 }}>Notes</label>
-                <textarea className="form-input" rows={4} style={{ resize: 'vertical', minHeight: 80, width: '100%', boxSizing: 'border-box' }}
+                <label className="form-label" style={{ display: 'block', fontSize: 10.5, marginBottom: 2 }}>Notes</label>
+                <textarea className="form-input" rows={4} style={{ resize: 'vertical', minHeight: 70, width: '100%', boxSizing: 'border-box', fontSize: 11 }}
                   value={editEntry.note || ''} onChange={(e) => setEditEntry(v => ({ ...v, note: e.target.value }))} />
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: 10, padding: 'clamp(12px, 4vw, 20px)', paddingTop: 10, borderTop: '1px solid var(--border)', flex: '0 0 auto' }}>
-              <button className="btn btn-outline" style={{ flex: 1, padding: 11 }} onClick={() => setEditEntry(null)}>Cancel</button>
-              <button className="btn btn-primary" style={{ flex: 2, padding: 11 }} onClick={saveEdit}>💾 Save Changes</button>
+              <button className="btn btn-outline" style={{ flex: 1, padding: 10, fontSize: 12 }} onClick={() => setEditEntry(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 2, padding: 10, fontSize: 12 }} onClick={saveEdit}>💾 Save Changes</button>
             </div>
           </div>
         </div>
