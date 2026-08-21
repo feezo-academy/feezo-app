@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePlan } from '../context/PlanContext';
 import LimitGatedButton from '../components/LimitGatedButton';
 import { supabase } from '../lib/supabaseClient';
+import { logActivity } from '../lib/auditLog';
 import AddStudentModal from '../components/AddStudentModal';
 import StudentDetailModal from '../components/StudentDetailModal';
 import ImportStudentsModal from '../components/ImportStudentsModal';
@@ -41,7 +42,7 @@ function RollBadge({ rollNo }) {
 
 export default function StudentsTab() {
   const { visibleStudents, students, visibleSports, visibleBatches, refresh } = useAcademyData();
-  const { isAdmin, academyId, canViewContact, canExport } = useAuth();
+  const { isAdmin, academyId, appUser, canViewContact, canExport } = useAuth();
   const [search, setSearch] = useState('');
   const [sportFilter, setSportFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
@@ -115,15 +116,21 @@ export default function StudentsTab() {
     if (!isAdmin) return; // UI already hides this from staff; guard kept in case of direct calls
     if (!selected.size) return;
     if (!confirm(`Delete ${selected.size} student(s)?`)) return;
+    const deletedNames = visibleStudents.filter(s => selected.has(s.id)).map(s => s.name || s.roll_no || s.id);
     await supabase.from('students').delete().in('id', Array.from(selected));
     setSelected(new Set());
     refresh();
+    logActivity({
+      academyId, actorId: appUser?.id, actorName: appUser?.name,
+      message: `Deleted ${deletedNames.length} student(s): ${deletedNames.join(', ')}`,
+    });
   };
 
   const restoreSelected = async () => {
     if (!selected.size) return;
     setRestoring(true);
     const bannedOn = null;
+    const restoredNames = visibleStudents.filter(s => selected.has(s.id)).map(s => s.name || s.roll_no || s.id);
     await supabase.from('students')
       .update({ banned: false, banned_on: bannedOn })
       .in('id', Array.from(selected));
@@ -131,6 +138,10 @@ export default function StudentsTab() {
     setShowRestoreConfirm(false);
     setSelected(new Set());
     refresh();
+    logActivity({
+      academyId, actorId: appUser?.id, actorName: appUser?.name,
+      message: `Restored ${restoredNames.length} dropped student(s): ${restoredNames.join(', ')}`,
+    });
   };
 
   return (
