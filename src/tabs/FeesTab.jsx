@@ -697,6 +697,10 @@ export default function FeesTab() {
         next[idx] = data;
         return next;
       });
+      logActivity({
+        academyId, actorId: appUser?.id, actorName: appUser?.name || user?.email,
+        message: `Sent ${kind === 'thank' ? 'payment thank-you' : 'fee reminder'} (${type}) to ${row.student.name} — ${row.sport}${row.batchLabel ? ' (' + row.batchLabel + ')' : ''}`,
+      });
     }
   };
 

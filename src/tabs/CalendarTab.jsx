@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase } from '../lib/supabaseClient';
+import { logActivity } from '../lib/auditLog';
 import {
   addDays, addMonths, dayName, fmt24to12, getMonday, isoToDisplay, isTaskMissed,
   monthLabel, SCHED_COLORS, SCHED_LABELS, shortDate, todayIso, urgencyFor,
@@ -139,18 +140,21 @@ export default function CalendarTab() {
     const { error } = await supabase.from('week_schedules').update({ status: 'in_progress', started_at: now, started_by: user?.id }).eq('id', t.id);
     if (error) { alert('Failed: ' + error.message); return; }
     setTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: 'in_progress', started_at: now, started_by: user?.id } : x));
+    logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `Checked in for task "${t.task || 'Untitled Task'}" (${t.date})` });
   };
   const markDone = async (t) => {
     const now = new Date().toISOString();
     const { error } = await supabase.from('week_schedules').update({ status: 'done', completed_at: now, completed_by: user?.id }).eq('id', t.id);
     if (error) { alert('Failed: ' + error.message); return; }
     setTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: 'done', completed_at: now, completed_by: user?.id } : x));
+    logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `Checked out for task "${t.task || 'Untitled Task'}" (${t.date})` });
   };
   const deleteTask = async (t) => {
     if (!confirm('Delete this task assignment?')) return;
     const { error } = await supabase.from('week_schedules').delete().eq('id', t.id);
     if (error) { alert('Delete failed: ' + error.message); return; }
     setTasks(prev => prev.filter(x => x.id !== t.id));
+    logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `Deleted task "${t.task || 'Untitled Task'}" for ${staffName(t.staff_id)} (${t.date})` });
   };
   const reportMissed = async (t, reason) => {
     const now = new Date().toISOString();
@@ -159,6 +163,7 @@ export default function CalendarTab() {
       .eq('id', t.id);
     if (error) { alert('Failed to send: ' + error.message); return; }
     setTasks(prev => prev.map(x => x.id === t.id ? { ...x, missed_reason: reason, missed_reported_at: now, missed_reported_by: user?.id } : x));
+    logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `Reported missed check-in for task "${t.task || 'Untitled Task'}" (${t.date}): ${reason}` });
   };
   const reviewMissed = async (t) => {
     const now = new Date().toISOString();
@@ -167,6 +172,7 @@ export default function CalendarTab() {
       .eq('id', t.id);
     if (error) { alert('Failed: ' + error.message); return; }
     setTasks(prev => prev.map(x => x.id === t.id ? { ...x, reviewed_at: now, reviewed_by: user?.id } : x));
+    logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `Reviewed missed check-in for ${staffName(t.staff_id)} — "${t.task || 'Untitled Task'}" (${t.date})` });
   };
 
   // ---- Month grid ----
