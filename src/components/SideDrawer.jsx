@@ -34,7 +34,7 @@ export default function SideDrawer({ open, onClose, academyName }) {
         onClick={onClose}
         style={{
           display: open ? 'block' : 'none',
-          position: 'fixed', inset: 0, zIndex: 599,
+          position: 'fixed', inset: 0, zIndex: 999,
           background: 'rgba(0,0,0,.4)',
         }}
       />
@@ -43,7 +43,7 @@ export default function SideDrawer({ open, onClose, academyName }) {
           position: 'fixed', top: 0, right: 0, bottom: 0,
           width: '72vw', maxWidth: 280,
           background: 'var(--card)', borderLeft: '1px solid var(--border)',
-          boxShadow: '-4px 0 24px rgba(0,0,0,.45)', zIndex: 600,
+          boxShadow: '-4px 0 24px rgba(0,0,0,.45)', zIndex: 1000,
           display: 'flex', flexDirection: 'column',
           transform: open ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform .28s cubic-bezier(.4,0,.2,1)',
