@@ -130,6 +130,7 @@ export default function UsersPage() {
     const next = !u.can_view_contact;
     await supabase.from('app_users').update({ can_view_contact: next }).eq('id', u.id);
     setUsers(prev => prev.map(x => x.id === u.id ? { ...x, can_view_contact: next } : x));
+    logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `${next ? 'Granted' : 'Revoked'} contact-number view access for ${u.name || u.email}` });
   };
 
   const admins = users.filter(u => u.role === 'admin');
