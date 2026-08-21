@@ -54,9 +54,16 @@ export async function takeSnapshot(academyId, label = 'manual') {
   if (error) throw error;
 }
 
-// Fires at most once per calendar day per academy. Checks for an existing
-// 'auto' snapshot created since local midnight before creating a new one,
-// so repeated logins/token refreshes in the same day are no-ops.
+// Fires at most once per calendar day per academy (IST). Checks for an
+// existing 'auto' snapshot created since local midnight before creating a
+// new one, so repeated logins/token refreshes in the same day are no-ops.
+//
+// A unique DB index (snapshots_one_auto_per_day, keyed on IST calendar day)
+// is the real backstop against duplicates — this app-side check is just an
+// optimization to skip the extra insert attempt most of the time. If two
+// calls race and both pass this check, the DB constraint rejects the
+// second insert with a 23505 (unique_violation), which is treated below
+// as "already snapped today" rather than a real failure.
 export async function maybeAutoSnapshot(academyId) {
   if (!academyId) return;
   const todayStart = new Date();
@@ -79,7 +86,12 @@ export async function maybeAutoSnapshot(academyId) {
   try {
     await takeSnapshot(academyId, 'auto');
   } catch (e) {
-    console.error('Auto snapshot on login failed:', e.message);
+    // 23505 = unique_violation — a concurrent call won the race and already
+    // inserted today's snapshot. That's expected, not a real failure.
+    const isDuplicate = e.code === '23505' || String(e.message || '').includes('duplicate key');
+    if (!isDuplicate) {
+      console.error('Auto snapshot on login failed:', e.message);
+    }
   }
 }
 
