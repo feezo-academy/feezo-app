@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase, signIn, signOut } from '../lib/supabaseClient';
+import { maybeAutoSnapshot } from '../lib/snapshot';
 
 const AuthContext = createContext(null);
 
@@ -19,6 +20,15 @@ export function AuthProvider({ children }) {
     if (!error && data) {
       setAppUser(data);
       setAcademyId(data.academy_id);
+
+      // Auto-backup: if this is an admin, make sure today's snapshot exists.
+      // maybeAutoSnapshot no-ops if one was already taken since local midnight,
+      // so this is safe to call on every session load / token refresh, not
+      // just a fresh login.
+      const roles = (data.role || '').split(',').map(r => r.trim());
+      if (roles.includes('admin') && data.academy_id) {
+        maybeAutoSnapshot(data.academy_id).catch(() => {});
+      }
     }
   }, []);
 
