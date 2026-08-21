@@ -79,7 +79,7 @@ function TimePicker12({ value, onChange, accentColor }) {
 }
 
 export default function ClassLogPage() {
-  const { academyId, isAdmin, appUser, assignedSports, assignedBatches, canExport, canEditLogs } = useAuth();
+  const { academyId, isAdmin, appUser, assignedSports, assignedBatches, canExport } = useAuth();
   const { visibleSports, visibleBatches } = useAcademyData();
 
   const [entries, setEntries] = useState([]);
@@ -239,6 +239,17 @@ export default function ClassLogPage() {
 
   const resetForm = () => setForm({ ...emptyForm, date: todayStr() });
 
+  // Staff can edit an entry by default when it's their own AND falls within
+  // their currently assigned sport/batch (an empty assignedSports/assignedBatches
+  // array means "no restriction", matching how it's used elsewhere on this page).
+  const canEditEntry = (entry) => {
+    if (isAdmin) return true;
+    if (entry.by !== staffName) return false;
+    const sportOk = !assignedSports.length || assignedSports.includes(entry.sport);
+    const batchOk = !assignedBatches.length || assignedBatches.includes(entry.batch);
+    return sportOk && batchOk;
+  };
+
   const openAdd = () => {
     if (atClassLogLimit) return;
     resetForm();
@@ -270,12 +281,12 @@ export default function ClassLogPage() {
   };
 
   const openEdit = (entry) => {
-    if (!isAdmin && !(canEditLogs && entry.by === staffName)) return;
+    if (!canEditEntry(entry)) return;
     setEditEntry({ ...entry });
   };
 
   const saveEdit = async () => {
-    if (!isAdmin && !(canEditLogs && editEntry.by === staffName)) return;
+    if (!canEditEntry(editEntry)) return;
     if (!editEntry.date) { alert('Please select a date'); return; }
     if (!editEntry.batch) { alert('Please select a batch'); return; }
     const duration = calcDuration(editEntry.inTime, editEntry.outTime);
@@ -438,7 +449,7 @@ export default function ClassLogPage() {
                   ✍️ {e.by} · {e.at ? new Date(e.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
                 </div>
               </div>
-              {(isAdmin || (canEditLogs && e.by === staffName)) && (
+              {canEditEntry(e) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
                   <button className="btn btn-primary" style={{ fontSize: 10, padding: '5px 8px' }} onClick={() => openEdit(e)}>✏️ Edit</button>
                   {isAdmin && (
