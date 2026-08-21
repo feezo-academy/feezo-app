@@ -304,6 +304,16 @@ export default function AttendanceTab() {
     reloadDebounceRef.current = setTimeout(() => setReloadKey(k => k + 1), 400);
   };
 
+  // `visibleSports` is a derived array from AcademyDataContext and gets a new
+  // reference on renders even when its contents haven't changed. It used to
+  // sit in the channel effect's dependency array below, which meant this
+  // effect — and the channel it opens — was tearing down and rebuilding on
+  // nearly every render, never giving the subscription a stable window to
+  // actually receive events. Read the latest value through a ref instead so
+  // the closure inside the handler stays fresh without forcing a resubscribe.
+  const visibleSportsRef = useRef(visibleSports);
+  useEffect(() => { visibleSportsRef.current = visibleSports; }, [visibleSports]);
+
   useEffect(() => {
     if (!academyId) return;
 
@@ -336,7 +346,7 @@ export default function AttendanceTab() {
           } else if (row.completed) {
             setDayStatusMap(m => {
               const merged = { ...m };
-              visibleSports.forEach(sp => { merged[sp.name] = true; });
+              visibleSportsRef.current.forEach(sp => { merged[sp.name] = true; });
               return merged;
             });
           }
@@ -344,7 +354,7 @@ export default function AttendanceTab() {
       .subscribe();
 
     return () => { clearTimeout(reloadDebounceRef.current); supabase.removeChannel(channel); };
-  }, [academyId, date, viewMode, visibleSports]);
+  }, [academyId, date, viewMode]);
 
   // Tapping P/A. Behavior depends on whether that student's sport register is
   // closed for the day (dayStatusMap[sport]):
