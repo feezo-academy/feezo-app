@@ -26,6 +26,7 @@ import PerformancePage from './admin/PerformancePage';
 import AddProgramPage from './admin/AddProgramPage';
 import ProgramListPage from './admin/ProgramListPage';
 import ClassLogPage from './admin/ClassLogPage';
+import ActivityPage from './admin/ActivityPage';
 import LeaveCountPage from './admin/LeaveCountPage';
 import StaffLeavePage from './admin/StaffLeavePage';
 
@@ -122,7 +123,8 @@ function AppShell() {
               <Route path="/admin/performance" element={<PerformancePage />} />
               <Route path="/admin/performance/add" element={<AddProgramPage />} />
               <Route path="/admin/performance/programs" element={<ProgramListPage />} />
-              <Route path="/admin/activity" element={<ClassLogPage />} />
+              <Route path="/admin/activity" element={<ActivityPage />} />
+              <Route path="/admin/class-log" element={<ClassLogPage />} />
               <Route path="/admin/leave-count" element={<LeaveCountPage />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
