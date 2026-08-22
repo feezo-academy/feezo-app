@@ -1,5 +1,5 @@
-// Shared logic for turning a program's frequency (daily/weekly/monthly) plus
-// its last points entry into a due date — used by StudentHistoryModal to
+// Shared logic for turning a program's frequency (daily/weekly/monthly/custom)
+// plus its last points entry into a due date — used by StudentHistoryModal to
 // gate the Add Points button, and by useOverdueEntries for the bell dot.
 
 export const FREQ_DAYS = { daily: 1, weekly: 7, monthly: 30 };
@@ -10,9 +10,37 @@ function addDays(dateStr, days) {
   return d;
 }
 
+function startOfDay(dateStr) {
+  const d = new Date(dateStr);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Finds the next date >= from that falls on one of the program's selected
+// weekdays (custom_days: array of 0=Sun..6=Sat).
+function nextCustomDate(from, customDays) {
+  if (!customDays || customDays.length === 0) return startOfDay(from);
+  let d = startOfDay(from);
+  for (let i = 0; i < 7; i++) {
+    if (customDays.includes(d.getDay())) return d;
+    d = addDays(d, 1);
+  }
+  return d; // unreachable in practice — loop always finds a match within 7 days
+}
+
 // baseDate: the last points entry date for this program, or (if none yet)
-// the program's created_at — a brand-new program is due from day one.
+// the program's from_date/created_at — a brand-new program is due from day one.
 export function getDueDate(program, lastEntryDate) {
+  if (program.frequency === 'custom') {
+    // search from the day AFTER the last entry so an entry made ON a
+    // scheduled day clears that day's dot; before any entry, search from
+    // the program's own start date instead of created_at so a program that
+    // starts in the future doesn't show as due immediately.
+    const from = lastEntryDate
+      ? addDays(lastEntryDate, 1)
+      : (program.from_date || program.created_at || new Date().toISOString());
+    return nextCustomDate(from, program.custom_days);
+  }
   const freqDays = FREQ_DAYS[program.frequency] || 7;
   const base = lastEntryDate || program.created_at || new Date().toISOString();
   return addDays(base, freqDays);
