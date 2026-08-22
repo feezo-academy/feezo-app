@@ -78,6 +78,41 @@ function TimePicker12({ value, onChange, accentColor }) {
   );
 }
 
+// Same centered popup used by StudentsTab's / AttendanceTab's / HomeTab's /
+// FeesTab's / EnquiryTab's filters — a dark overlay + a card of radio rows,
+// closing itself on selection.
+function FilterPopup({ title, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{title}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RadioRow({ name, checked, onChange, label }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+      <input type="radio" name={name} checked={checked} onChange={onChange} />
+      {label}
+    </label>
+  );
+}
+
+const VIEW_TYPE_OPTIONS = [
+  { v: 'day', l: '📅 Day' },
+  { v: 'month', l: '📆 Month' },
+  { v: 'year', l: '🗓️ Year' },
+];
+
 export default function ClassLogPage() {
   const { academyId, isAdmin, appUser, assignedSports, assignedBatches, canExport } = useAuth();
   const { visibleSports, visibleBatches } = useAcademyData();
@@ -94,6 +129,7 @@ export default function ClassLogPage() {
   const [filterMonth, setFilterMonth] = useState(todayStr().slice(0, 7));
   const [filterYear, setFilterYear] = useState(String(new Date().getFullYear()));
   const [defaultsApplied, setDefaultsApplied] = useState(false);
+  const [popup, setPopup] = useState(null); // 'sport' | 'batch' | 'staff' | 'viewType' | 'year' | null
 
   // Add modal
   const [showAdd, setShowAdd] = useState(false);
@@ -366,53 +402,44 @@ export default function ClassLogPage() {
 
       {/* Sport / Batch filters */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 7, flexWrap: 'wrap' }}>
-        <select
-          className="form-select"
-          style={{ flex: 1, minWidth: 100, padding: '7px 10px', fontSize: 12 }}
-          value={filterSport}
-          onChange={(e) => { setFilterSport(e.target.value); setFilterBatch(''); }}
+        <button
+          className="btn btn-outline btn-sm"
+          style={{ flex: 1, minWidth: 100, padding: '7px 10px', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          onClick={() => setPopup('sport')}
         >
-          <option value="">All Sports</option>
-          {sportOptions.map(sp => <option key={sp} value={sp}>{sp}</option>)}
-        </select>
-        <select
-          className="form-select"
-          style={{ flex: 1, minWidth: 100, padding: '7px 10px', fontSize: 12 }}
-          value={filterBatch}
-          onChange={(e) => setFilterBatch(e.target.value)}
+          {filterSport || 'All Sports'}
+        </button>
+        <button
+          className="btn btn-outline btn-sm"
+          style={{ flex: 1, minWidth: 100, padding: '7px 10px', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          onClick={() => setPopup('batch')}
         >
-          <option value="">All Batches</option>
-          {filterBatchOptions.map(b => <option key={b.name} value={b.name}>{b.sport} : {b.batchLabel}</option>)}
-        </select>
+          {filterBatchOptions.find(b => b.name === filterBatch)?.batchLabel || 'All Batches'}
+        </button>
       </div>
 
       {/* Staff filter (admin only) */}
       {isAdmin && (
         <div style={{ marginBottom: 7 }}>
-          <select
-            className="form-select"
-            style={{ width: '100%', padding: '7px 10px', fontSize: 12 }}
-            value={filterStaff}
-            onChange={(e) => setFilterStaff(e.target.value)}
+          <button
+            className="btn btn-outline btn-sm"
+            style={{ width: '100%', padding: '7px 10px', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            onClick={() => setPopup('staff')}
           >
-            <option value="">👤 All Staff/Admins</option>
-            {staffOptions.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
+            {filterStaff || '👤 All Staff/Admins'}
+          </button>
         </div>
       )}
 
       {/* Day / Month / Year view */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select
-          className="form-select"
-          style={{ flex: '0 0 auto', width: 'auto', padding: '7px 10px', fontSize: 12 }}
-          value={viewType}
-          onChange={(e) => setViewType(e.target.value)}
+        <button
+          className="btn btn-outline btn-sm"
+          style={{ flex: '0 0 auto', padding: '7px 10px', fontSize: 12 }}
+          onClick={() => setPopup('viewType')}
         >
-          <option value="day">📅 Day</option>
-          <option value="month">📆 Month</option>
-          <option value="year">🗓️ Year</option>
-        </select>
+          {VIEW_TYPE_OPTIONS.find(o => o.v === viewType)?.l}
+        </button>
         {viewType === 'day' && (
           <input type="date" className="form-input" style={{ flex: 1, minWidth: 120, padding: '7px 10px', fontSize: 12 }}
             value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
@@ -422,12 +449,58 @@ export default function ClassLogPage() {
             value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} />
         )}
         {viewType === 'year' && (
-          <select className="form-select" style={{ flex: 1, minWidth: 100, padding: '7px 10px', fontSize: 12 }}
-            value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
-            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <button
+            className="btn btn-outline btn-sm"
+            style={{ flex: 1, minWidth: 100, padding: '7px 10px', fontSize: 12 }}
+            onClick={() => setPopup('year')}
+          >
+            {filterYear}
+          </button>
         )}
       </div>
+
+      {popup === 'sport' && (
+        <FilterPopup title="Select Sport" onClose={() => setPopup(null)}>
+          <RadioRow name="sportsel" checked={!filterSport} onChange={() => { setFilterSport(''); setFilterBatch(''); setPopup(null); }} label="All Sports" />
+          {sportOptions.map(sp => (
+            <RadioRow key={sp} name="sportsel" checked={filterSport === sp} onChange={() => { setFilterSport(sp); setFilterBatch(''); setPopup(null); }} label={sp} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'batch' && (
+        <FilterPopup title="Select Batch" onClose={() => setPopup(null)}>
+          <RadioRow name="batchsel" checked={!filterBatch} onChange={() => { setFilterBatch(''); setPopup(null); }} label="All Batches" />
+          {filterBatchOptions.map(b => (
+            <RadioRow key={b.name} name="batchsel" checked={filterBatch === b.name} onChange={() => { setFilterBatch(b.name); setPopup(null); }} label={`${b.sport} : ${b.batchLabel}`} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'staff' && isAdmin && (
+        <FilterPopup title="Filter by Staff" onClose={() => setPopup(null)}>
+          <RadioRow name="staffsel" checked={!filterStaff} onChange={() => { setFilterStaff(''); setPopup(null); }} label="👤 All Staff/Admins" />
+          {staffOptions.map(n => (
+            <RadioRow key={n} name="staffsel" checked={filterStaff === n} onChange={() => { setFilterStaff(n); setPopup(null); }} label={n} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'viewType' && (
+        <FilterPopup title="Select View" onClose={() => setPopup(null)}>
+          {VIEW_TYPE_OPTIONS.map(o => (
+            <RadioRow key={o.v} name="viewtypesel" checked={viewType === o.v} onChange={() => { setViewType(o.v); setPopup(null); }} label={o.l} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'year' && (
+        <FilterPopup title="Select Year" onClose={() => setPopup(null)}>
+          {yearOptions.map(y => (
+            <RadioRow key={y} name="yearsel" checked={filterYear === y} onChange={() => { setFilterYear(y); setPopup(null); }} label={y} />
+          ))}
+        </FilterPopup>
+      )}
 
       {/* List */}
       {loading ? (
