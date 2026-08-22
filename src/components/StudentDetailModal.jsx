@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/auditLog';
+import { exportStudentProfilePdf } from '../lib/exporters';
 import AchievementsSection from './AchievementsSection';
 
 function calcAge(dobIso) {
@@ -39,11 +40,28 @@ function ContactRow({ label, value }) {
   );
 }
 
-export default function StudentDetailModal({ student, academyId, isAdmin, canViewContact, onClose, onEdit, onChanged }) {
+export default function StudentDetailModal({ student, academyId, isAdmin, canViewContact, canExport, onClose, onEdit, onChanged }) {
   const { appUser } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const isBanned = !!student.banned;
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const [{ data: academy }, { data: achievements }] = await Promise.all([
+        supabase.from('academies').select('name, logo_url').eq('id', academyId).maybeSingle(),
+        supabase.from('achievements').select('*').eq('student_id', student.id).eq('academy_id', academyId),
+      ]);
+      await exportStudentProfilePdf(student, academy || {}, achievements || [], canViewContact);
+      logActivity({ academyId, actorId: appUser?.id, actorName: appUser?.name, message: `Downloaded profile PDF for ${student.name}` });
+    } catch (e) {
+      alert(e.message || 'Failed to generate PDF.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const toggleBan = async () => {
     setBusy(true);
@@ -80,8 +98,24 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
             <span style={{ fontSize: 18 }}>👤</span>
             <span style={{ fontWeight: 800, fontSize: 16 }}>Student Details</span>
           </div>
-          <button onClick={onClose} aria-label="Close"
-            style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 15, color: 'var(--gray)' }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              aria-label="Download Profile PDF"
+              title="Download Profile PDF"
+              style={{
+                width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)',
+                border: '1px solid var(--border)', cursor: downloading ? 'wait' : 'pointer',
+                fontSize: 14, color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: downloading ? 0.6 : 1,
+              }}
+            >
+              {downloading ? '…' : '⬇️'}
+            </button>
+            <button onClick={onClose} aria-label="Close"
+              style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 15, color: 'var(--gray)' }}>✕</button>
+          </div>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '18px' }}>
