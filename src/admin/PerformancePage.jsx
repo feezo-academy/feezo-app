@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase } from '../lib/supabaseClient';
-import ProgramManagerModal from './ProgramManagerModal';
 import AwardPointsModal from './AwardPointsModal';
 import StudentChartsModal from './StudentChartsModal';
 import StudentHistoryModal from './StudentHistoryModal';
@@ -12,83 +12,78 @@ const PRESENT_STATUS = 'P'; // adjust here if attendance uses a different code f
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 function monthStartIso() { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); }
+function isCompleted(p) { return !!p.to_date && p.to_date < todayIso(); }
 
 function PerformancePageContent() {
   const { academyId, isAdmin, user, appUser } = useAuth();
   const { visibleStudents, visibleSports } = useAcademyData();
+  const navigate = useNavigate();
 
   const [attendance, setAttendance] = useState([]);
   const [programs, setPrograms] = useState([]);
   const [challenges, setChallenges] = useState([]);
   const [points, setPoints] = useState([]);
-  const [settings, setSettings] = useState({ attendance_weight: 50 });
   const [loading, setLoading] = useState(false);
 
   const [dateFrom, setDateFrom] = useState(monthStartIso());
   const [dateTo, setDateTo] = useState(todayIso());
   const [search, setSearch] = useState('');
-  const [selectedSports, setSelectedSports] = useState(new Set());
+  const [selectedSport, setSelectedSport] = useState('');
+  const [selectedProgramId, setSelectedProgramId] = useState('');
   const [sortDir, setSortDir] = useState('desc'); // 'desc' = high to low
   const [filtersOpen, setFiltersOpen] = useState(false); // collapse bar
-  const [popup, setPopup] = useState(null); // 'sport' | 'sort' | null
+  const [popup, setPopup] = useState(null); // 'sport' | 'program' | 'sort' | null
 
-  const [showProgramManager, setShowProgramManager] = useState(false);
   const [awardFor, setAwardFor] = useState(null); // row currently awarding points for
   const [chartsFor, setChartsFor] = useState(null); // row currently viewing charts for
   const [historyFor, setHistoryFor] = useState(null); // row currently viewing history for
 
-  // default: all sports/batches selected once loaded
+  // default: first visible sport, once loaded
   useEffect(() => {
-    if (visibleSports.length && selectedSports.size === 0) {
-      setSelectedSports(new Set(visibleSports.map(s => s.name)));
+    if (visibleSports.length && !selectedSport) {
+      setSelectedSport(visibleSports[0].name);
     }
   }, [visibleSports]); // eslint-disable-line
+
+  // active (non-completed) programs for the currently selected sport
+  const programsForSport = useMemo(
+    () => programs.filter(p => p.sport === selectedSport && !isCompleted(p)),
+    [programs, selectedSport]
+  );
+
+  // default: first active program for the selected sport — resets whenever
+  // the sport changes or the current selection no longer exists/is completed
+  useEffect(() => {
+    if (programsForSport.length === 0) { setSelectedProgramId(''); return; }
+    if (!programsForSport.some(p => p.id === selectedProgramId)) {
+      setSelectedProgramId(programsForSport[0].id);
+    }
+  }, [programsForSport]); // eslint-disable-line
+
+  const selectedProgram = useMemo(
+    () => programs.find(p => p.id === selectedProgramId) || null,
+    [programs, selectedProgramId]
+  );
 
   const load = async () => {
     if (!academyId) return;
     setLoading(true);
-    const [att, prog, chal, pts, set] = await Promise.all([
+    const [att, prog, chal, pts] = await Promise.all([
       supabase.from('attendance').select('student_id, sport, status, date').eq('academy_id', academyId).gte('date', dateFrom).lte('date', dateTo),
       supabase.from('programs').select('*').eq('academy_id', academyId),
       supabase.from('program_challenges').select('*').eq('academy_id', academyId),
       supabase.from('student_challenge_points').select('*').eq('academy_id', academyId),
-      supabase.from('performance_settings').select('*').eq('academy_id', academyId).maybeSingle(),
     ]);
     setAttendance(att.data || []);
     setPrograms(prog.data || []);
     setChallenges(chal.data || []);
     setPoints(pts.data || []);
-    setSettings(set.data || { attendance_weight: 50 });
     setLoading(false);
   };
   useEffect(() => { load(); }, [academyId, dateFrom, dateTo]); // eslint-disable-line
 
-  const attendanceWeight = settings?.attendance_weight ?? 50;
+  const attendanceWeight = selectedProgram?.attendance_weight ?? 50;
   const courseWeight = 100 - attendanceWeight;
-
-  const saveWeight = async (val) => {
-    const clamped = Math.max(0, Math.min(100, val));
-    setSettings(s => ({ ...s, attendance_weight: clamped }));
-    const { error } = await supabase.from('performance_settings')
-      .upsert({ academy_id: academyId, attendance_weight: clamped, updated_by_id: user?.id, updated_at: new Date().toISOString() }, { onConflict: 'academy_id' });
-    if (error) alert('Failed to save split: ' + error.message);
-  };
-  const saveCourseWeight = (val) => saveWeight(100 - Math.max(0, Math.min(100, val)));
-
-  // local text state for the split inputs so an in-progress edit (e.g. clearing
-  // the field to retype) never gets committed as 0 — only commits on blur
-  const [attendanceInput, setAttendanceInput] = useState(String(attendanceWeight));
-  const [programInput, setProgramInput] = useState(String(courseWeight));
-  useEffect(() => { setAttendanceInput(String(attendanceWeight)); }, [attendanceWeight]);
-  useEffect(() => { setProgramInput(String(courseWeight)); }, [courseWeight]);
-  const commitAttendanceInput = () => {
-    if (attendanceInput === '') { setAttendanceInput(String(attendanceWeight)); return; }
-    saveWeight(Number(attendanceInput));
-  };
-  const commitProgramInput = () => {
-    if (programInput === '') { setProgramInput(String(courseWeight)); return; }
-    saveCourseWeight(Number(programInput));
-  };
 
   // attendance % per student+sport — denominator is every distinct session
   // date recorded for that sport (across all students) in the date range, not
@@ -127,33 +122,31 @@ function PerformancePageContent() {
     return out;
   }, [attendance]);
 
-  // total possible points per sport (sum of challenge totals under that sport's programs)
-  const totalPointsBySport = useMemo(() => {
-    const out = {};
-    challenges.forEach(c => { out[c.sport] = (out[c.sport] || 0) + (c.total_points || 0); });
-    return out;
-  }, [challenges]);
+  // total possible points for the SELECTED PROGRAM only (sum of its challenges)
+  const totalPointsForProgram = useMemo(() => {
+    if (!selectedProgramId) return 0;
+    return challenges.filter(c => c.program_id === selectedProgramId).reduce((sum, c) => sum + (c.total_points || 0), 0);
+  }, [challenges, selectedProgramId]);
 
-  // points earned per student+sport
-  const earnedPointsByStudentSport = useMemo(() => {
-    const challengeById = {};
-    challenges.forEach(c => { challengeById[c.id] = c; });
+  // points earned per student — scoped to the selected program's challenges only
+  const earnedPointsByStudent = useMemo(() => {
+    if (!selectedProgramId) return {};
+    const challengeIds = new Set(challenges.filter(c => c.program_id === selectedProgramId).map(c => c.id));
     const out = {};
     points.forEach(p => {
-      const c = challengeById[p.challenge_id];
-      if (!c) return;
-      const key = `${p.student_id}|${c.sport}`;
-      out[key] = (out[key] || 0) + Number(p.points_awarded || 0);
+      if (!challengeIds.has(p.challenge_id)) return;
+      out[p.student_id] = (out[p.student_id] || 0) + Number(p.points_awarded || 0);
     });
     return out;
-  }, [points, challenges]);
+  }, [points, challenges, selectedProgramId]);
 
-  // build one row per student+sport — batches within the same sport are merged
-  // into a single entry, but a student doing 2 different sports gets 2 rows
+  // build one row per student enrolled in the SELECTED sport — batches within
+  // that sport are merged into a single entry
   const rows = useMemo(() => {
     const bySportStudent = new Map();
     visibleStudents.forEach(s => {
       (s.enrollments || []).forEach(en => {
+        if (en.sport !== selectedSport) return;
         const key = `${s.id}|${en.sport}`;
         if (!bySportStudent.has(key)) {
           bySportStudent.set(key, { student: s, sport: en.sport, batchLabels: [], batchKeys: [] });
@@ -168,9 +161,8 @@ function PerformancePageContent() {
     const out = [];
     bySportStudent.forEach((entry, key) => {
       const attPct = attendancePct[key] ?? 0;
-      const totalPts = totalPointsBySport[entry.sport] || 0;
-      const earnedPts = earnedPointsByStudentSport[key] || 0;
-      const coursePct = totalPts ? (earnedPts / totalPts) * 100 : 0;
+      const earnedPts = earnedPointsByStudent[entry.student.id] || 0;
+      const coursePct = totalPointsForProgram ? (earnedPts / totalPointsForProgram) * 100 : 0;
       const finalScore = attPct * (attendanceWeight / 100) + coursePct * (courseWeight / 100);
       out.push({
         key,
@@ -184,7 +176,7 @@ function PerformancePageContent() {
       });
     });
     return out;
-  }, [visibleStudents, attendancePct, totalPointsBySport, earnedPointsByStudentSport, attendanceWeight, courseWeight]);
+  }, [visibleStudents, selectedSport, attendancePct, totalPointsForProgram, earnedPointsByStudent, attendanceWeight, courseWeight]);
 
   const filteredRows = useMemo(() => {
     let list = rows;
@@ -192,20 +184,9 @@ function PerformancePageContent() {
       const q = search.trim().toLowerCase();
       list = list.filter(r => (r.student.name || '').toLowerCase().includes(q));
     }
-    if (selectedSports.size > 0 && selectedSports.size < visibleSports.length) {
-      list = list.filter(r => selectedSports.has(r.sport));
-    }
     list = [...list].sort((a, b) => sortDir === 'desc' ? b.finalScore - a.finalScore : a.finalScore - b.finalScore);
     return list;
-  }, [rows, search, selectedSports, sortDir, visibleSports]);
-
-  const toggleSport = (name) => {
-    setSelectedSports(prev => {
-      const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
-      return next;
-    });
-  };
+  }, [rows, search, sortDir]);
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
       {chartsFor ? (
@@ -215,11 +196,11 @@ function PerformancePageContent() {
           userId={user?.id}
           userName={appUser?.name || user?.email}
           canEdit={isAdmin}
-          totalPoints={totalPointsBySport[chartsFor.sport] || 0}
-          earnedPoints={earnedPointsByStudentSport[`${chartsFor.student.id}|${chartsFor.sport}`] || 0}
+          totalPoints={totalPointsForProgram}
+          earnedPoints={earnedPointsByStudent[chartsFor.student.id] || 0}
           pointsRecords={points.filter(p => p.student_id === chartsFor.student.id)}
-          challenges={challenges.filter(c => c.sport === chartsFor.sport)}
-          programs={programs.filter(p => p.sport === chartsFor.sport)}
+          challenges={challenges.filter(c => c.program_id === selectedProgramId)}
+          programs={selectedProgram ? [selectedProgram] : []}
           attendanceRecords={attendance.filter(a => a.student_id === chartsFor.student.id && a.sport === chartsFor.sport)}
           onClose={() => setChartsFor(null)}
         />
@@ -237,7 +218,10 @@ function PerformancePageContent() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>🏆 Performance Leaderboard</div>
         {isAdmin && (
-          <button className="btn btn-primary btn-sm" onClick={() => setShowProgramManager(true)}>+ Add Program</button>
+          <div style={{ display: 'flex', gap: 5 }}>
+            <button className="btn btn-outline btn-sm" style={{ fontSize: 11, padding: '5px 9px' }} onClick={() => navigate('/admin/performance/programs')}>List</button>
+            <button className="btn btn-primary btn-sm" style={{ fontSize: 11, padding: '5px 9px' }} onClick={() => navigate('/admin/performance/add')}>+ Add</button>
+          </div>
         )}
       </div>
 
@@ -277,38 +261,18 @@ function PerformancePageContent() {
             <input type="date" className="form-input" style={{ flex: 1, fontSize: 11, padding: '7px 6px' }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
           </div>
 
-          {/* sport / sort — single row, open popup on click */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: isAdmin ? 12 : 0 }}>
-            <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => setPopup('sport')}>
-              Sport {selectedSports.size < visibleSports.length ? `(${selectedSports.size})` : ''}
+          {/* program / sport / sort — single row, open popup on click */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('program')}>
+              {selectedProgram?.name || 'Program'}
             </button>
-            <button className="btn btn-outline btn-sm" style={{ flex: 1 }} onClick={() => setPopup('sort')}>
+            <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11 }} onClick={() => setPopup('sport')}>
+              {selectedSport || 'Sport'}
+            </button>
+            <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11 }} onClick={() => setPopup('sort')}>
               Sort
             </button>
           </div>
-
-          {/* admin: attendance/course split as numbers */}
-          {isAdmin && (
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gray)', marginBottom: 5 }}>SCORE SPLIT (%)</div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 3 }}>Attendance</div>
-                  <input type="number" min={0} max={100} className="form-input" style={{ width: '100%', fontSize: 12, padding: '7px 8px' }}
-                    value={attendanceInput}
-                    onChange={e => setAttendanceInput(e.target.value)}
-                    onBlur={commitAttendanceInput} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 3 }}>Program</div>
-                  <input type="number" min={0} max={100} className="form-input" style={{ width: '100%', fontSize: 12, padding: '7px 8px' }}
-                    value={programInput}
-                    onChange={e => setProgramInput(e.target.value)}
-                    onBlur={commitProgramInput} />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -321,15 +285,25 @@ function PerformancePageContent() {
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div style={{ fontSize: 13, fontWeight: 800 }}>
-                {popup === 'sport' ? 'Select Sport' : 'Sort By'}
+                {popup === 'sport' ? 'Select Sport' : popup === 'program' ? 'Select Program' : 'Sort By'}
               </div>
               <button onClick={() => setPopup(null)} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
             </div>
 
             {popup === 'sport' && visibleSports.map(s => (
               <label key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={selectedSports.has(s.name)} onChange={() => toggleSport(s.name)} />
+                <input type="radio" name="sportsel" checked={selectedSport === s.name} onChange={() => { setSelectedSport(s.name); setPopup(null); }} />
                 {s.name}
+              </label>
+            ))}
+
+            {popup === 'program' && programsForSport.length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--gray)', padding: '8px 2px' }}>No active programs for {selectedSport}.</div>
+            )}
+            {popup === 'program' && programsForSport.map(p => (
+              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+                <input type="radio" name="programsel" checked={selectedProgramId === p.id} onChange={() => { setSelectedProgramId(p.id); setPopup(null); }} />
+                {p.name}
               </label>
             ))}
 
@@ -337,7 +311,7 @@ function PerformancePageContent() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {[{ v: 'desc', l: 'High to Low' }, { v: 'asc', l: 'Low to High' }].map(o => (
                   <label key={o.v} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
-                    <input type="radio" name="sortdir" checked={sortDir === o.v} onChange={() => setSortDir(o.v)} />
+                    <input type="radio" name="sortdir" checked={sortDir === o.v} onChange={() => { setSortDir(o.v); setPopup(null); }} />
                     {o.l}
                   </label>
                 ))}
@@ -349,7 +323,18 @@ function PerformancePageContent() {
 
       {loading && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 20 }}>Loading…</div>}
 
-      {!loading && filteredRows.map((r, i) => (
+      {!loading && !selectedProgram && (
+        <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 40, fontSize: 13 }}>
+          No program created{selectedSport ? ` for ${selectedSport}` : ''}.
+          {isAdmin && (
+            <div style={{ marginTop: 10 }}>
+              <button className="btn btn-primary btn-sm" onClick={() => navigate('/admin/performance/add')}>+ Add Program</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && selectedProgram && filteredRows.map((r, i) => (
         <div key={r.key} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
           onClick={() => setHistoryFor(r)}>
           <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
@@ -380,25 +365,11 @@ function PerformancePageContent() {
           <div style={{ width: 44, textAlign: 'right', fontWeight: 800, color: 'var(--accent2)', fontSize: 15, flexShrink: 0 }}>{r.finalScore.toFixed(0)}</div>
         </div>
       ))}
-      {!loading && filteredRows.length === 0 && (
+      {!loading && selectedProgram && filteredRows.length === 0 && (
         <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 30 }}>No students match the current filters.</div>
       )}
 
       </>
-      )}
-
-      {showProgramManager && (
-        <ProgramManagerModal
-          academyId={academyId}
-          userId={user?.id}
-          userName={appUser?.name || user?.email}
-          sports={visibleSports}
-          programs={programs}
-          challenges={challenges}
-          isAdmin={isAdmin}
-          onClose={() => setShowProgramManager(false)}
-          onChanged={load}
-        />
       )}
 
       {awardFor && (
