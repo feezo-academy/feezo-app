@@ -163,13 +163,20 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
 
           <div style={{ padding: '10px 0' }}>
             <div style={{ color: 'var(--gray)', fontSize: 12, marginBottom: 6 }}>🏆 Sports Enrolled</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, alignSelf: 'flex-start' }}>
-                Sport: {student.sport}
-              </span>
-              <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, alignSelf: 'flex-start' }}>
-                Batch: {student.batchLabel}
-              </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(student.enrollments && student.enrollments.length > 0
+                ? student.enrollments
+                : [{ sport: student.sport, batchLabel: student.batchLabel }]
+              ).map((en, i) => (
+                <div key={i} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10 }}>
+                    Sport: {en.sport}
+                  </span>
+                  <span className="badge badge-blue" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10 }}>
+                    Batch: {en.batchLabel}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
