@@ -40,6 +40,35 @@ function relTime(iso) {
   return d.toLocaleDateString();
 }
 
+// Same centered popup used by StudentsTab's / AttendanceTab's / HomeTab's /
+// FeesTab's Sport/Batch/Sort filters — a dark overlay + a card of radio
+// rows, closing itself on selection.
+function FilterPopup({ title, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{title}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RadioRow({ name, checked, onChange, label }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+      <input type="radio" name={name} checked={checked} onChange={onChange} />
+      {label}
+    </label>
+  );
+}
+
 function ConversionBadge({ ratio }) {
   if (!ratio) return null;
   const b = CONVERSION_BADGE[ratio] || CONVERSION_BADGE.Low;
@@ -89,6 +118,7 @@ export default function EnquiryTab() {
   const [filterStaff, setFilterStaff] = useState('');
   const [filterReminder, setFilterReminder] = useState('');
   const [view, setView] = useState('active'); // 'active' | 'archive' (admin only)
+  const [popup, setPopup] = useState(null); // 'conv' | 'sport' | 'staff' | null
 
   const [convertPrefill, setConvertPrefill] = useState(null);
   const [convertingEnqId, setConvertingEnqId] = useState(null);
@@ -365,25 +395,47 @@ export default function EnquiryTab() {
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-        <select className="form-select" style={{ flex: 1, minWidth: 100, fontSize: 12, padding: '7px 9px' }} value={filterConv} onChange={e => setFilterConv(e.target.value)}>
-          <option value="">All Conversion</option>
-          {CONVERSION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <select className="form-select" style={{ flex: 1, minWidth: 100, fontSize: 12, padding: '7px 9px' }} value={filterSport} onChange={e => setFilterSport(e.target.value)}>
-          <option value="">All Sports</option>
-          {(isAdmin ? visibleSports.map(s => s.name) : staffScopedSports).map(sp => <option key={sp} value={sp}>{sp}</option>)}
-        </select>
+        <button className="btn btn-outline btn-sm" style={{ flex: 1, minWidth: 100, fontSize: 12, padding: '7px 9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('conv')}>
+          {CONVERSION_OPTIONS.find(o => o.value === filterConv)?.label || 'All Conversion'}
+        </button>
+        <button className="btn btn-outline btn-sm" style={{ flex: 1, minWidth: 100, fontSize: 12, padding: '7px 9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('sport')}>
+          {filterSport || 'All Sports'}
+        </button>
         {isAdmin && (
-          <select className="form-select" style={{ flex: 1, minWidth: 130, fontSize: 12, padding: '7px 9px' }} value={filterStaff} onChange={e => setFilterStaff(e.target.value)}>
-            <option value="">👥 Assigned to: All</option>
-            {staffList.slice().sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id)).map(u => (
-              <option key={u.id} value={u.id}>{u.name || u.id}{u.role?.includes('admin') ? ' (Admin)' : ''}</option>
-            ))}
-            <option value="__UNASSIGNED__">— Unassigned —</option>
-          </select>
+          <button className="btn btn-outline btn-sm" style={{ flex: 1, minWidth: 130, fontSize: 12, padding: '7px 9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('staff')}>
+            {filterStaff === '__UNASSIGNED__' ? '— Unassigned —' : (staffList.find(u => u.id === filterStaff)?.name || staffList.find(u => u.id === filterStaff)?.id) || '👥 Assigned to: All'}
+          </button>
         )}
         <input type="date" className="form-input" style={{ flex: 1, minWidth: 130, fontSize: 12, padding: '7px 9px' }} value={filterReminder} onChange={e => setFilterReminder(e.target.value)} />
       </div>
+
+      {popup === 'conv' && (
+        <FilterPopup title="Filter by Conversion" onClose={() => setPopup(null)}>
+          <RadioRow name="convsel" checked={!filterConv} onChange={() => { setFilterConv(''); setPopup(null); }} label="All Conversion" />
+          {CONVERSION_OPTIONS.map(o => (
+            <RadioRow key={o.value} name="convsel" checked={filterConv === o.value} onChange={() => { setFilterConv(o.value); setPopup(null); }} label={o.label} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'sport' && (
+        <FilterPopup title="Filter by Sport" onClose={() => setPopup(null)}>
+          <RadioRow name="sportsel" checked={!filterSport} onChange={() => { setFilterSport(''); setPopup(null); }} label="All Sports" />
+          {(isAdmin ? visibleSports.map(s => s.name) : staffScopedSports).map(sp => (
+            <RadioRow key={sp} name="sportsel" checked={filterSport === sp} onChange={() => { setFilterSport(sp); setPopup(null); }} label={sp} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'staff' && isAdmin && (
+        <FilterPopup title="Filter by Assigned Staff" onClose={() => setPopup(null)}>
+          <RadioRow name="staffsel" checked={!filterStaff} onChange={() => { setFilterStaff(''); setPopup(null); }} label="👥 Assigned to: All" />
+          {staffList.slice().sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id)).map(u => (
+            <RadioRow key={u.id} name="staffsel" checked={filterStaff === u.id} onChange={() => { setFilterStaff(u.id); setPopup(null); }} label={`${u.name || u.id}${u.role?.includes('admin') ? ' (Admin)' : ''}`} />
+          ))}
+          <RadioRow name="staffsel" checked={filterStaff === '__UNASSIGNED__'} onChange={() => { setFilterStaff('__UNASSIGNED__'); setPopup(null); }} label="— Unassigned —" />
+        </FilterPopup>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 90 }}>
         {loading && <div style={{ textAlign: 'center', color: 'var(--gray)', padding: 20, fontSize: 12 }}>Loading…</div>}
