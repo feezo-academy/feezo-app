@@ -322,14 +322,20 @@ export default function HomeTab() {
   // them (see feeStatus()), even though they count as "settled" elsewhere.
   // Restricted to currently-active students only — a fee paid before a
   // student was later marked dropped shouldn't surface a dropped student
-  // in this tile (Total/Joined/Pending already filter this way).
+  // in this tile (Total/Joined already filter this way).
   const activeStudentIdSet = new Set(activeStudents.map(s => s.id));
   const collectedFees = scopedFees.filter(f =>
     !f.is_scholarship && (parseInt(f.amount, 10) || 0) > 0 && activeStudentIdSet.has(f.student_id));
   const collected = collectedFees.reduce((s, f) => s + (parseInt(f.amount, 10) || 0), 0);
 
-  // --- Fee Pending: active students only, dues for the currently browsed
-  // month.
+  // --- Fee Pending: dues for the currently browsed month, for ANY eligible
+  // enrollment — including banned/dropped students. A student who was active
+  // and attended during the browsed month still owed that month's fee even
+  // if they were banned afterward, so Fee Pending intentionally does NOT
+  // filter by activeStudents (unlike Total Students / Joined / Fees
+  // Collected, which are "current roster" tiles). This also keeps this
+  // tile's count consistent with FeesTab.jsx, which never applies an
+  // active-student filter either.
   //
   // Fee rows are only ever created once a payment is actually recorded — an
   // unpaid month has NO row in `fees` at all. So "pending" can't be read off
@@ -371,7 +377,6 @@ export default function HomeTab() {
     const attByStudent = attendanceByStudentByMonth[monthIso] || {};
     filteredEnrollmentRows.forEach(r => {
       const s = r.student;
-      if (!activeStudents.some(a => a.id === s.id)) return;
       if (!isEligible(s, year, month + 1, attByStudent, r.sport, r.batchLabel)) return;
       const fee = feeMap[`${s.id}|${norm(r.sport)}|${norm(r.batchLabel)}|${monthIso}`] || null;
       const st = feeStatus(fee);
@@ -388,7 +393,7 @@ export default function HomeTab() {
       });
     });
     return rows;
-  }, [attendanceByStudentByMonth, filteredEnrollmentRows, activeStudents, feeMap, monthIso, year, month, monthLabelShort]);
+  }, [attendanceByStudentByMonth, filteredEnrollmentRows, feeMap, monthIso, year, month, monthLabelShort]);
 
   const pending = pendingFeeRows.length;
 
