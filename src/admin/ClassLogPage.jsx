@@ -120,7 +120,8 @@ export default function ClassLogPage() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Filters
+  // Filters — default to "All Sports" / "All Batches" (empty string), never
+  // auto-selected to a specific sport/batch on load.
   const [filterSport, setFilterSport] = useState('');
   const [filterBatch, setFilterBatch] = useState('');
   const [filterStaff, setFilterStaff] = useState('');
@@ -128,7 +129,6 @@ export default function ClassLogPage() {
   const [filterDate, setFilterDate] = useState(todayStr());
   const [filterMonth, setFilterMonth] = useState(todayStr().slice(0, 7));
   const [filterYear, setFilterYear] = useState(String(new Date().getFullYear()));
-  const [defaultsApplied, setDefaultsApplied] = useState(false);
   const [popup, setPopup] = useState(null); // 'sport' | 'batch' | 'staff' | 'viewType' | 'year' | null
 
   // Add modal
@@ -249,15 +249,6 @@ export default function ClassLogPage() {
     else if (viewType === 'month' && filterMonth) list = list.filter(e => (e.date || '').startsWith(filterMonth));
     return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [entries, filterSport, filterBatch, filterStaff, isAdmin, viewType, filterDate, filterMonth, filterYear]);
-  useEffect(() => {
-    if (defaultsApplied) return;
-    if (!sportOptions.length) return;
-    const sp = sportOptions[0];
-    const batchesForSp = visibleBatches.filter(b => b.sport === sp && (isAdmin || !assignedBatches.length || assignedBatches.includes(b.name)));
-    setFilterSport(sp);
-    setFilterBatch(batchesForSp[0]?.name || '');
-    setDefaultsApplied(true);
-  }, [sportOptions, visibleBatches, isAdmin, assignedBatches, defaultsApplied]);
 
   // Staff names available to filter by (admin only) — derived from logged entries
   const staffOptions = useMemo(() => {
