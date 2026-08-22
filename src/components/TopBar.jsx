@@ -209,10 +209,20 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
   }), [performancePending]);
 
   // ---- Browser notifications for pending items (only while this tab is open) ----
-  // Fires a native Chrome notification for anything NEW in the bell's four
-  // categories — not on every 60s poll re-render, and not for items that
-  // were already pending before this tab was opened (that would dump a
-  // burst of stale notifications on every page load).
+  // Register the service worker once. Android Chrome refuses to run
+  // `new Notification()` directly (throws "Illegal constructor") and
+  // requires notifications to go through a Service Worker registration's
+  // showNotification() instead — this gives us that registration. Desktop
+  // browsers don't strictly need it, but using the same path everywhere
+  // keeps the behavior consistent.
+  const swRegistrationRef = useRef(null);
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => { swRegistrationRef.current = reg; })
+      .catch(err => console.warn('Service worker registration failed:', err));
+  }, []);
+
   const notifiedIdsRef = useRef(new Set());
   const notifFirstRunRef = useRef(true);
 
@@ -235,15 +245,24 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     allItems.forEach(item => {
       if (notifiedIdsRef.current.has(item.id)) return;
       notifiedIdsRef.current.add(item.id);
-      // Android Chrome disallows `new Notification()` outright (it requires
-      // going through a Service Worker's showNotification() instead) and
-      // throws a TypeError — without this try/catch that error was
-      // uncaught inside the effect and crashed the whole React tree
-      // (white screen). Desktop Chrome/Firefox/Edge are unaffected.
-      try {
-        new Notification(item.title, { body: item.body, icon: logoUrl || '/favicon.ico' });
-      } catch (err) {
-        console.warn('Notification not supported in this browser context:', err);
+
+      const opts = { body: item.body, icon: logoUrl || '/favicon.ico' };
+      const reg = swRegistrationRef.current;
+
+      if (reg && reg.showNotification) {
+        // Preferred path — works on Android Chrome as well as desktop.
+        reg.showNotification(item.title, opts).catch(err =>
+          console.warn('showNotification failed:', err));
+      } else {
+        // Fallback for browsers where the service worker hasn't finished
+        // registering yet, or doesn't support it — desktop Chrome/Firefox
+        // still allow the direct constructor. Android Chrome would throw
+        // here, hence the try/catch.
+        try {
+          new Notification(item.title, opts);
+        } catch (err) {
+          console.warn('Notification not supported in this browser context:', err);
+        }
       }
     });
   }, [enquiryPending, leavePending, taskPending, performancePending, logoUrl]);
