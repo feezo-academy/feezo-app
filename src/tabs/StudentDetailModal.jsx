@@ -99,22 +99,20 @@ export default function StudentDetailModal({ student, academyId, isAdmin, canVie
             <span style={{ fontWeight: 800, fontSize: 16 }}>Student Details</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {canExport && (
-              <button
-                onClick={handleDownload}
-                disabled={downloading}
-                aria-label="Download Profile PDF"
-                title="Download Profile PDF"
-                style={{
-                  width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)',
-                  border: '1px solid var(--border)', cursor: downloading ? 'wait' : 'pointer',
-                  fontSize: 14, color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  opacity: downloading ? 0.6 : 1,
-                }}
-              >
-                {downloading ? '…' : '⬇️'}
-              </button>
-            )}
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              aria-label="Download Profile PDF"
+              title="Download Profile PDF"
+              style={{
+                width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)',
+                border: '1px solid var(--border)', cursor: downloading ? 'wait' : 'pointer',
+                fontSize: 14, color: 'var(--accent2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: downloading ? 0.6 : 1,
+              }}
+            >
+              {downloading ? '…' : '⬇️'}
+            </button>
             <button onClick={onClose} aria-label="Close"
               style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card2)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 15, color: 'var(--gray)' }}>✕</button>
           </div>
