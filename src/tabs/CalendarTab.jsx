@@ -13,6 +13,35 @@ import ViewTaskModal from '../components/ViewTaskModal';
 import ApplyLeaveModal from '../components/ApplyLeaveModal';
 import LeaveListModal from '../components/LeaveListModal';
 
+// Same centered popup used by StudentsTab's / AttendanceTab's / HomeTab's /
+// FeesTab's / EnquiryTab's / ClassLogPage's filters — a dark overlay + a
+// card of radio rows, closing itself on selection.
+function FilterPopup({ title, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{title}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RadioRow({ name, checked, onChange, label }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+      <input type="radio" name={name} checked={checked} onChange={onChange} />
+      {label}
+    </label>
+  );
+}
+
 function TaskCard({ t, isAdmin, staffName, onView, onStart, onDone }) {
   const color = SCHED_COLORS[t.status] || SCHED_COLORS.scheduled;
   const label = SCHED_LABELS[t.status] || SCHED_LABELS.scheduled;
@@ -70,9 +99,10 @@ export default function CalendarTab() {
   const [view, setView] = useState('month'); // 'month' | 'day' | 'list'
   const [monthAnchor, setMonthAnchor] = useState(todayIso());
   const [dayDate, setDayDate] = useState(todayIso());
-  const [listFrom, setListFrom] = useState('');
-  const [listTo, setListTo] = useState('');
+  const [listFrom, setListFrom] = useState(todayIso());
+  const [listTo, setListTo] = useState(todayIso());
   const [staffFilter, setStaffFilter] = useState('ALL');
+  const [popup, setPopup] = useState(null); // 'staff' | null
 
   const [tasks, setTasks] = useState([]);
   const [staffList, setStaffList] = useState([]);
@@ -215,11 +245,19 @@ export default function CalendarTab() {
 
       {isAdmin && (
         <div style={{ marginBottom: 8 }}>
-          <select className="form-select" style={{ width: '100%', fontSize: 12 }} value={staffFilter} onChange={e => setStaffFilter(e.target.value)}>
-            <option value="ALL">All Staff</option>
-            {staffList.map(u => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-          </select>
+          <button className="btn btn-outline btn-sm" style={{ width: '100%', fontSize: 12, padding: '7px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('staff')}>
+            {staffFilter === 'ALL' ? 'All Staff' : (staffList.find(u => u.id === staffFilter)?.name || staffFilter)}
+          </button>
         </div>
+      )}
+
+      {popup === 'staff' && isAdmin && (
+        <FilterPopup title="Filter by Staff" onClose={() => setPopup(null)}>
+          <RadioRow name="staffsel" checked={staffFilter === 'ALL'} onChange={() => { setStaffFilter('ALL'); setPopup(null); }} label="All Staff" />
+          {staffList.map(u => (
+            <RadioRow key={u.id} name="staffsel" checked={staffFilter === u.id} onChange={() => { setStaffFilter(u.id); setPopup(null); }} label={u.name || u.id} />
+          ))}
+        </FilterPopup>
       )}
       {view === 'list' && (
         <div style={{ display: 'flex', gap: 5, marginBottom: 10, alignItems: 'center', flexWrap: 'nowrap' }}>
