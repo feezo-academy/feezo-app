@@ -33,6 +33,50 @@ import StaffLeavePage from './admin/StaffLeavePage';
 const savedTheme = localStorage.getItem('feezo-theme') || 'dark';
 document.body.classList.toggle('dark-theme', savedTheme === 'dark');
 
+// Main swipeable tabs — these stay mounted once visited instead of being
+// destroyed/recreated on every switch. Each one fetches + subscribes to
+// realtime exactly once per session; switching away just hides it (CSS),
+// switching back shows it instantly with whatever it already has, kept
+// live the whole time by its own realtime channel. Fixes the "percentage
+// loading screen on every tab switch" issue (each unmount/remount used to
+// refetch from Supabase and re-trigger the global loader).
+const MAIN_TABS = [
+  { path: '/home', Component: HomeTab },
+  { path: '/students', Component: StudentsTab },
+  { path: '/attendance', Component: AttendanceTab },
+  { path: '/fees', Component: FeesTab },
+  { path: '/enquiry', Component: EnquiryTab },
+  { path: '/calendar', Component: CalendarTab },
+  { path: '/profile', Component: ProfileTab },
+];
+const MAIN_TAB_PATHS = MAIN_TABS.map(t => t.path);
+
+// Renders every main tab that has EVER been visited this session, all
+// stacked in the same spot; only the active one is display:block, the
+// rest are display:none (not unmounted). A tab is added to `visited` the
+// first time its path is hit, so tabs the user never opens are never
+// mounted/fetched at all.
+function MainTabsHost({ pathname, animClass }) {
+  const [visited, setVisited] = useState(() => new Set([pathname]));
+  useEffect(() => {
+    setVisited(prev => (prev.has(pathname) ? prev : new Set(prev).add(pathname)));
+  }, [pathname]);
+
+  return (
+    <>
+      {MAIN_TABS.filter(t => visited.has(t.path)).map(({ path, Component }) => (
+        <div
+          key={path}
+          className={path === pathname ? animClass : ''}
+          style={{ position: 'absolute', inset: 0, display: path === pathname ? 'block' : 'none' }}
+        >
+          <Component />
+        </div>
+      ))}
+    </>
+  );
+}
+
 function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { academy } = useAcademyData();
@@ -60,29 +104,30 @@ function AppShell() {
         onToggleNotif={() => {}}
         hasNotif={false}
       />
-      <div className="content pages-viewport" ref={viewportRef} style={{ padding: '10px 14px' }}>
-        <div key={location.pathname} className={animClass} style={{ position: 'absolute', inset: 0 }}>
-          <Routes>
-            <Route path="/home" element={<HomeTab />} />
-            <Route path="/students" element={<StudentsTab />} />
-            <Route path="/attendance" element={<AttendanceTab />} />
-            <Route path="/fees" element={<FeesTab />} />
-            <Route path="/enquiry" element={<EnquiryTab />} />
-            <Route path="/calendar" element={<CalendarTab />} />
-            <Route path="/calendar/leave" element={<StaffLeavePage />} />
-            <Route path="/profile" element={<ProfileTab />} />
-            <Route path="/admin/sports-batches" element={<SportsBatchesPage />} />
-            <Route path="/admin/users" element={<UsersPage />} />
-            <Route path="/admin/courses" element={<CoursesPage />} />
-            <Route path="/admin/schedules" element={<SchedulesPage />} />
-            <Route path="/admin/performance" element={<PerformancePage />} />
-            <Route path="/admin/performance/add" element={<AddProgramPage />} />
-            <Route path="/admin/performance/programs" element={<ProgramListPage />} />
-            <Route path="/admin/activity" element={<ClassLogPage />} />
-            <Route path="/admin/leave-count" element={<LeaveCountPage />} />
-            <Route path="*" element={<Navigate to="/home" replace />} />
-          </Routes>
-        </div>
+      <div className="content pages-viewport" ref={viewportRef} style={{ padding: '10px 14px', position: 'relative' }}>
+        {MAIN_TAB_PATHS.includes(location.pathname) ? (
+          // Swipeable main tabs — kept alive, never remounted after first visit.
+          <MainTabsHost pathname={location.pathname} animClass={animClass} />
+        ) : (
+          // Everything else (admin pages, staff leave) keeps the old
+          // mount-per-visit behavior — these are visited far less often,
+          // so there's no benefit to keeping them alive in memory.
+          <div key={location.pathname} className={animClass} style={{ position: 'absolute', inset: 0 }}>
+            <Routes>
+              <Route path="/calendar/leave" element={<StaffLeavePage />} />
+              <Route path="/admin/sports-batches" element={<SportsBatchesPage />} />
+              <Route path="/admin/users" element={<UsersPage />} />
+              <Route path="/admin/courses" element={<CoursesPage />} />
+              <Route path="/admin/schedules" element={<SchedulesPage />} />
+              <Route path="/admin/performance" element={<PerformancePage />} />
+              <Route path="/admin/performance/add" element={<AddProgramPage />} />
+              <Route path="/admin/performance/programs" element={<ProgramListPage />} />
+              <Route path="/admin/activity" element={<ClassLogPage />} />
+              <Route path="/admin/leave-count" element={<LeaveCountPage />} />
+              <Route path="*" element={<Navigate to="/home" replace />} />
+            </Routes>
+          </div>
+        )}
       </div>
       <BottomNav />
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
