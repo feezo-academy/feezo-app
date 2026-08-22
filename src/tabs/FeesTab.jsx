@@ -25,6 +25,43 @@ const norm = (v) => (v || '').toString().trim().toLowerCase();
 // and never duplicated.
 const keyFor = (studentId, sport, batchLabel) => `${studentId}::${norm(sport)}::${norm(batchLabel)}`;
 
+// Same centered popup used by StudentsTab's / AttendanceTab's / HomeTab's
+// Sport/Batch/Sort filters — a dark overlay + a card of radio rows, closing
+// itself on selection.
+function FilterPopup({ title, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{title}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RadioRow({ name, checked, onChange, label }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+      <input type="radio" name={name} checked={checked} onChange={onChange} />
+      {label}
+    </label>
+  );
+}
+
+const STATUS_OPTIONS = [
+  { v: 'outstanding', l: 'Unpaid + Partial' },
+  { v: 'all', l: 'All Status' },
+  { v: 'paid', l: 'Paid' },
+  { v: 'partial', l: 'Partially Paid' },
+  { v: 'unpaid', l: 'Unpaid' },
+];
+
 function buildMsg(tpl, ctx) {
   return tpl
     .replace(/{name}/g, ctx.name || '')
@@ -429,6 +466,7 @@ export default function FeesTab() {
   const [search, setSearch] = useState('');
   const [includeNoAttendance, setIncludeNoAttendance] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [popup, setPopup] = useState(null); // 'month' | 'year' | 'sport' | 'batch' | 'status' | null
 
   const [fees, setFees] = useState([]);
   const [txnCounts, setTxnCounts] = useState({}); // student_id -> total payment count, ALL months (needed for sequential txn IDs)
@@ -793,9 +831,9 @@ export default function FeesTab() {
                     style={{ padding: '6px 10px' }}
                     onClick={goPrevMonth}
                   >◀</button>
-                  <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={month} onChange={e => setMonth(Number(e.target.value))}>
-                    {MONTHS.map((mLabel, i) => <option key={i} value={i + 1}>{mLabel}</option>)}
-                  </select>
+                  <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 12, padding: '7px 9px' }} onClick={() => setPopup('month')}>
+                    {MONTHS[month - 1]}
+                  </button>
                   <button
                     className="btn btn-xs"
                     style={{ padding: '6px 10px' }}
@@ -807,39 +845,85 @@ export default function FeesTab() {
 
             <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
               <button className="btn btn-xs" style={{ padding: '6px 10px' }} onClick={() => setYear(y => y - 1)}>◀</button>
-              <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={year} onChange={e => setYear(Number(e.target.value))}>
-                {Array.from({ length: 6 }, (_, i) => today.getFullYear() - 3 + i).map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
+              <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 12, padding: '7px 9px' }} onClick={() => setPopup('year')}>
+                {year}
+              </button>
               <button className="btn btn-xs" style={{ padding: '6px 10px' }} onClick={() => setYear(y => y + 1)}>▶</button>
             </div>
 
             <div style={{ display: 'flex', gap: 6 }}>
-              <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter(''); }}>
-                <option value="">All Sports</option>
-                {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-              </select>
-              <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
-                <option value="">All Batches</option>
-                {batchesForSport.map(b => <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>)}
-              </select>
+              <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 12, padding: '7px 9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('sport')}>
+                {sportFilter || 'All Sports'}
+              </button>
+              <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 12, padding: '7px 9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('batch')}>
+                {batchFilter || 'All Batches'}
+              </button>
             </div>
           </div>
         )}
       </div>
 
+      {popup === 'month' && (
+        <FilterPopup title="Select Month" onClose={() => setPopup(null)}>
+          {MONTHS.map((mLabel, i) => (
+            <RadioRow key={mLabel} name="monthsel" checked={month === i + 1} onChange={() => { setMonth(i + 1); setPopup(null); }} label={mLabel} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'year' && (
+        <FilterPopup title="Select Year" onClose={() => setPopup(null)}>
+          {Array.from({ length: 6 }, (_, i) => today.getFullYear() - 3 + i).map(y => (
+            <RadioRow key={y} name="yearsel" checked={year === y} onChange={() => { setYear(y); setPopup(null); }} label={String(y)} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'sport' && (
+        <FilterPopup title="Select Sport" onClose={() => setPopup(null)}>
+          <RadioRow name="sportsel" checked={!sportFilter} onChange={() => { setSportFilter(''); setBatchFilter(''); setPopup(null); }} label="All Sports" />
+          {visibleSports.map(s => (
+            <RadioRow key={s.id} name="sportsel" checked={sportFilter === s.name} onChange={() => { setSportFilter(s.name); setBatchFilter(''); setPopup(null); }} label={s.name} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'batch' && (
+        <FilterPopup title="Select Batch" onClose={() => setPopup(null)}>
+          <RadioRow name="batchsel" checked={!batchFilter} onChange={() => { setBatchFilter(''); setPopup(null); }} label="All Batches" />
+          {batchesForSport.map(b => (
+            <RadioRow key={b.id} name="batchsel" checked={batchFilter === b.batchLabel} onChange={() => { setBatchFilter(b.batchLabel); setPopup(null); }} label={b.batchLabel} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'status' && (
+        <FilterPopup title="Filter by Status" onClose={() => setPopup(null)}>
+          {STATUS_OPTIONS.map(o => (
+            <RadioRow
+              key={o.v} name="statussel" checked={statusFilter === o.v}
+              onChange={() => { setStatusFilter(o.v); setPopup(null); }}
+              label={`${o.l} (${
+                o.v === 'outstanding' ? outstandingRows.length
+                : o.v === 'paid' ? paidRows.length
+                : o.v === 'partial' ? partialRows.length
+                : o.v === 'unpaid' ? unpaidRows.length
+                : allRows.length
+              })`}
+            />
+          ))}
+        </FilterPopup>
+      )}
+
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
         <input className="form-input" style={{ flex: 1, fontSize: 12 }} placeholder="🔍 Search name or roll no." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* Paid / Unpaid dropdown */}
+      {/* Paid / Unpaid filter */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        <select className="form-select" style={{ flex: 1, fontSize: 12 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-          <option value="outstanding">Unpaid + Partial ({outstandingRows.length})</option>
-          <option value="all">All Status</option>
-          <option value="paid">Paid ({paidRows.length})</option>
-          <option value="partial">Partially Paid ({partialRows.length})</option>
-          <option value="unpaid">Unpaid ({unpaidRows.length})</option>
-        </select>
+        <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 12, padding: '7px 9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('status')}>
+          {STATUS_OPTIONS.find(o => o.v === statusFilter)?.l}
+        </button>
       </div>
 
       {totalNoAttendance > 0 && (
