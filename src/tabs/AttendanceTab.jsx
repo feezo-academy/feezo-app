@@ -9,6 +9,22 @@ import ImportAttendanceModal from '../components/ImportAttendanceModal';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+const SORT_OPTIONS = [
+  { v: 'roll_asc', l: 'Roll No ↑' },
+  { v: 'roll_desc', l: 'Roll No ↓' },
+  { v: 'name_az', l: 'Name A→Z' },
+  { v: 'name_za', l: 'Name Z→A' },
+  { v: 'present_first', l: '✅ Present first' },
+  { v: 'absent_first', l: '❌ Absent first' },
+  { v: 'unmarked_first', l: '⏳ Unmarked first' },
+];
+
+const STATUS_OPTIONS = [
+  { v: 'all', l: 'All' },
+  { v: 'present', l: 'Present' },
+  { v: 'absent', l: 'Absent' },
+];
+
 // IMPORTANT: build the YYYY-MM-DD string from local date parts, never via
 // toISOString() — that converts to UTC first, which silently shifts the
 // date by a day for any timezone ahead of UTC (e.g. IST) and is what made
@@ -41,6 +57,34 @@ function RollBadge({ rollNo }) {
   );
 }
 
+// Same centered popup used by StudentsTab's Program/Sport/Sort filters —
+// a dark overlay + a card of radio rows, closing itself on selection.
+function FilterPopup({ title, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{title}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RadioRow({ name, checked, onChange, label }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+      <input type="radio" name={name} checked={checked} onChange={onChange} />
+      {label}
+    </label>
+  );
+}
+
 export default function AttendanceTab() {
   const { visibleStudents, visibleSports, visibleBatches, refresh } = useAcademyData();
   const { isAdmin, academyId, user, appUser, canExport } = useAuth();
@@ -57,6 +101,7 @@ export default function AttendanceTab() {
   const [batchFilter, setBatchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'present' | 'absent' — day view only
   const [sortBy, setSortBy] = useState('roll_asc');
+  const [popup, setPopup] = useState(null); // 'sport' | 'batch' | 'status' | 'sort' | 'day' | 'month' | 'year' | null
   const [records, setRecords] = useState({}); // student_id -> 'P' | 'A'  (day mode only, matches db status codes)
   const [lateMap, setLateMap] = useState({}); // student_id -> bool, marked Present after that sport's register closed
   const [periodRows, setPeriodRows] = useState({}); // student_id -> { present, absent }  (month mode)
@@ -611,6 +656,9 @@ export default function AttendanceTab() {
 
   const yearHasData = Object.values(yearSummary).some(r => (r?.days?.size || 0) > 0);
 
+  const statusLabel = STATUS_OPTIONS.find(o => o.v === statusFilter)?.l;
+  const sortLabel = SORT_OPTIONS.find(o => o.v === sortBy)?.l;
+
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
@@ -673,58 +721,39 @@ export default function AttendanceTab() {
 
         {panelOpen && (
           <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {/* Sport | Batch | Status | Sort — now folded into the same collapsible panel as the date arrows */}
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
-              <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
-                value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter(''); }}>
-                <option value="">Sports</option>
-                {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-              </select>
-              <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
-                value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
-                <option value="">Batches</option>
-                {batchesForSport.map(b => <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>)}
-              </select>
+            {/* Sport | Batch | Status | Sort — button + popup style, matching StudentsTab */}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('sport')}>
+                {sportFilter || 'All Sports'}
+              </button>
+              <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('batch')}>
+                {batchFilter || 'All Batches'}
+              </button>
               {viewMode === 'day' && (
-                <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
-                  value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-                  <option value="all">Status</option>
-                  <option value="present">Present</option>
-                  <option value="absent">Absent</option>
-                </select>
+                <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('status')}>
+                  {statusFilter === 'all' ? 'Status' : statusLabel}
+                </button>
               )}
-              <select className="form-select" style={{ flex: '1 1 0', minWidth: 0, fontSize: 10.5, padding: '6px 2px', textAlign: 'center', textOverflow: 'ellipsis' }}
-                value={sortBy} onChange={e => setSortBy(e.target.value)}>
-                <option value="roll_asc">Roll ↑</option>
-                <option value="roll_desc">Roll ↓</option>
-                <option value="name_az">A→Z</option>
-                <option value="name_za">Z→A</option>
-                <option value="present_first">✅ Present</option>
-                <option value="absent_first">❌ Absent</option>
-                <option value="unmarked_first">⏳ Unmarked</option>
-              </select>
+              <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('sort')}>
+                {sortLabel || 'Sort'}
+              </button>
             </div>
 
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <DateArrowGroup onPrev={() => shiftDay(-1)} onNext={() => shiftDay(1)}>
-                <select className="form-select" style={{ flex: 1, fontSize: 11, padding: '5px 4px' }}
-                  value={day} onChange={e => setDay(Number(e.target.value))}>
-                  {Array.from({ length: daysInMonth(year, month) }, (_, i) => i + 1).map(d => (
-                    <option key={d} value={d}>{d} {WEEKDAYS[new Date(year, month, d).getDay()]}</option>
-                  ))}
-                </select>
+                <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, padding: '5px 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('day')}>
+                  {day} {WEEKDAYS[dateObj.getDay()]}
+                </button>
               </DateArrowGroup>
               <DateArrowGroup onPrev={() => shiftMonth(-1)} onNext={() => shiftMonth(1)}>
-                <select className="form-select" style={{ flex: 1, fontSize: 11, padding: '5px 4px' }}
-                  value={month} onChange={e => setMonth(Number(e.target.value))}>
-                  {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
-                </select>
+                <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, padding: '5px 4px' }} onClick={() => setPopup('month')}>
+                  {MONTHS[month]}
+                </button>
               </DateArrowGroup>
               <DateArrowGroup onPrev={() => shiftYear(-1)} onNext={() => shiftYear(1)}>
-                <select className="form-select" style={{ flex: 1, fontSize: 11, padding: '5px 4px' }}
-                  value={year} onChange={e => setYear(Number(e.target.value))}>
-                  {Array.from({ length: 8 }, (_, i) => year - 4 + i).map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
+                <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, padding: '5px 4px' }} onClick={() => setPopup('year')}>
+                  {year}
+                </button>
               </DateArrowGroup>
             </div>
 
@@ -739,6 +768,64 @@ export default function AttendanceTab() {
           </div>
         )}
       </div>
+
+      {popup === 'sport' && (
+        <FilterPopup title="Select Sport" onClose={() => setPopup(null)}>
+          <RadioRow name="sportsel" checked={!sportFilter} onChange={() => { setSportFilter(''); setBatchFilter(''); setPopup(null); }} label="All Sports" />
+          {visibleSports.map(s => (
+            <RadioRow key={s.id} name="sportsel" checked={sportFilter === s.name} onChange={() => { setSportFilter(s.name); setBatchFilter(''); setPopup(null); }} label={s.name} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'batch' && (
+        <FilterPopup title="Select Batch" onClose={() => setPopup(null)}>
+          <RadioRow name="batchsel" checked={!batchFilter} onChange={() => { setBatchFilter(''); setPopup(null); }} label="All Batches" />
+          {batchesForSport.map(b => (
+            <RadioRow key={b.id} name="batchsel" checked={batchFilter === b.batchLabel} onChange={() => { setBatchFilter(b.batchLabel); setPopup(null); }} label={b.batchLabel} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'status' && (
+        <FilterPopup title="Filter by Status" onClose={() => setPopup(null)}>
+          {STATUS_OPTIONS.map(o => (
+            <RadioRow key={o.v} name="statussel" checked={statusFilter === o.v} onChange={() => { setStatusFilter(o.v); setPopup(null); }} label={o.l} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'sort' && (
+        <FilterPopup title="Sort By" onClose={() => setPopup(null)}>
+          {SORT_OPTIONS.map(o => (
+            <RadioRow key={o.v} name="sortsel" checked={sortBy === o.v} onChange={() => { setSortBy(o.v); setPopup(null); }} label={o.l} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'day' && (
+        <FilterPopup title="Select Day" onClose={() => setPopup(null)}>
+          {Array.from({ length: daysInMonth(year, month) }, (_, i) => i + 1).map(d => (
+            <RadioRow key={d} name="daysel" checked={day === d} onChange={() => { setDay(d); setPopup(null); }} label={`${d} ${WEEKDAYS[new Date(year, month, d).getDay()]}`} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'month' && (
+        <FilterPopup title="Select Month" onClose={() => setPopup(null)}>
+          {MONTHS.map((m, i) => (
+            <RadioRow key={m} name="monthsel" checked={month === i} onChange={() => { setMonth(i); setPopup(null); }} label={m} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'year' && (
+        <FilterPopup title="Select Year" onClose={() => setPopup(null)}>
+          {Array.from({ length: 8 }, (_, i) => year - 4 + i).map(y => (
+            <RadioRow key={y} name="yearsel" checked={year === y} onChange={() => { setYear(y); setPopup(null); }} label={String(y)} />
+          ))}
+        </FilterPopup>
+      )}
 
       {/* Search box — always visible, never hides on scroll */}
       <div className="search-wrap" style={{ marginBottom: 7 }}>
