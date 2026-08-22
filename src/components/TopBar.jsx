@@ -96,7 +96,7 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
   const loadPerformance = async () => {
     if (!academyId) return;
     const [progRes, chalRes, ptsRes] = await Promise.all([
-      supabase.from('programs').select('id, name, sport, frequency, created_at').eq('academy_id', academyId),
+      supabase.from('programs').select('id, name, sport, frequency, custom_days, from_date, to_date, created_at').eq('academy_id', academyId),
       supabase.from('program_challenges').select('id, program_id').eq('academy_id', academyId),
       supabase.from('student_challenge_points').select('student_id, challenge_id, awarded_at, created_at').eq('academy_id', academyId),
     ]);
@@ -180,10 +180,12 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     });
 
     const rows = [];
+    const today = todayIso();
     visibleStudents.forEach(student => {
       const sports = new Set((student.enrollments || []).map(e => e.sport));
       perfPrograms.forEach(program => {
         if (!sports.has(program.sport)) return;
+        if (program.to_date && program.to_date < today) return; // completed programs don't page anyone
         const hasChallenges = perfChallenges.some(c => c.program_id === program.id);
         if (!hasChallenges) return;
         const key = `${student.id}|${program.id}`;
