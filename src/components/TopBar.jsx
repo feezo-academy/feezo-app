@@ -235,7 +235,16 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     allItems.forEach(item => {
       if (notifiedIdsRef.current.has(item.id)) return;
       notifiedIdsRef.current.add(item.id);
-      new Notification(item.title, { body: item.body, icon: logoUrl || '/favicon.ico' });
+      // Android Chrome disallows `new Notification()` outright (it requires
+      // going through a Service Worker's showNotification() instead) and
+      // throws a TypeError — without this try/catch that error was
+      // uncaught inside the effect and crashed the whole React tree
+      // (white screen). Desktop Chrome/Firefox/Edge are unaffected.
+      try {
+        new Notification(item.title, { body: item.body, icon: logoUrl || '/favicon.ico' });
+      } catch (err) {
+        console.warn('Notification not supported in this browser context:', err);
+      }
     });
   }, [enquiryPending, leavePending, taskPending, performancePending, logoUrl]);
 
@@ -250,7 +259,11 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
 
   const openBell = () => {
     if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+      try {
+        Notification.requestPermission();
+      } catch (err) {
+        console.warn('Notification permission request failed:', err);
+      }
     }
     setShowBellMenu(s => !s);
     onToggleNotif?.();
