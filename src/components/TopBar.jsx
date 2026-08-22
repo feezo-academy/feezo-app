@@ -230,13 +230,18 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
     const categories = [
-      { key: 'enq', emoji: '⏰', label: 'Enquiry follow-up', items: enquiryPending },
-      { key: 'leave', emoji: '🌴', label: 'Leave request', items: leavePending },
-      { key: 'task', emoji: '✅', label: 'Task alert', items: taskPending },
-      { key: 'perf', emoji: '🏆', label: 'Performance due', items: performancePending },
+      { key: 'enq', emoji: '⏰', label: 'Enquiry follow-up',
+        items: enquiryPending.map(q => ({ id: q.id, detail: `${q.name} — reminder ${q.reminder_date}` })) },
+      { key: 'leave', emoji: '🌴', label: 'Leave request',
+        items: leavePending.map(l => ({ id: l.id, detail: `${l.staff_name} — ${l.date}` })) },
+      { key: 'task', emoji: '✅', label: 'Task alert',
+        items: taskPending.map(t => ({ id: t.id, detail: `${t.task} — ${t.date}` })) },
+      { key: 'perf', emoji: '🏆', label: 'Performance due',
+        items: performancePending.map(p => ({ id: p.id, detail: `${p.studentName} — ${p.programName}` })) },
     ];
 
-    const allItems = categories.flatMap(c => c.items.map(item => ({ catKey: c.key, id: `${c.key}-${item.id}` })));
+    const allItems = categories.flatMap(c =>
+      c.items.map(item => ({ catKey: c.key, id: `${c.key}-${item.id}`, detail: item.detail })));
 
     if (notifFirstRunRef.current) {
       // Don't fire a burst of notifications for everything already pending
@@ -246,25 +251,33 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
       return;
     }
 
-    // Count only the genuinely NEW items since last run, grouped by category.
-    const newCountByCat = {};
+    // Collect only the genuinely NEW items since last run.
+    const newItems = [];
     allItems.forEach(item => {
       if (notifiedIdsRef.current.has(item.id)) return;
       notifiedIdsRef.current.add(item.id);
-      newCountByCat[item.catKey] = (newCountByCat[item.catKey] || 0) + 1;
+      newItems.push(item);
     });
-
-    const totalNew = Object.values(newCountByCat).reduce((sum, n) => sum + n, 0);
-    if (totalNew === 0) return; // nothing new this cycle — no notification
+    if (newItems.length === 0) return; // nothing new this cycle — no notification
 
     // One notification for everything new, however many categories/items —
-    // never one-per-item.
-    const parts = categories
-      .filter(c => newCountByCat[c.key] > 0)
-      .map(c => `${c.emoji} ${newCountByCat[c.key]} ${c.label}${newCountByCat[c.key] > 1 ? 's' : ''}`);
+    // never one-per-item. A single new item gets its own detail line instead
+    // of a generic "1 X" summary repeated as both title and body.
+    let title, body;
+    if (newItems.length === 1) {
+      const cat = categories.find(c => c.key === newItems[0].catKey);
+      title = `${cat.emoji} ${cat.label}`;
+      body = newItems[0].detail;
+    } else {
+      const countByCat = {};
+      newItems.forEach(i => { countByCat[i.catKey] = (countByCat[i.catKey] || 0) + 1; });
+      const parts = categories
+        .filter(c => countByCat[c.key] > 0)
+        .map(c => `${c.emoji} ${countByCat[c.key]} ${c.label}${countByCat[c.key] > 1 ? 's' : ''}`);
+      title = `🔔 ${newItems.length} new updates in FeeZo`;
+      body = parts.join(' · ');
+    }
 
-    const title = totalNew === 1 ? parts[0] : `🔔 ${totalNew} new updates in FeeZo`;
-    const body = parts.join(' · ');
     // `tag` makes this replace any previous FeeZo notification still
     // showing, instead of stacking a second one, in case this effect
     // somehow ran twice in quick succession.
