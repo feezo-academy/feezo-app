@@ -8,12 +8,17 @@ import PanelWindow from '../components/PanelWindow';
 
 const STATUS_COLOR = { pending: '#f59e0b', approved: '#22c55e', rejected: '#ef4444' };
 
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export default function StaffLeavePage() {
   const { academyId, isAdmin, user, appUser } = useAuth();
   const [requests, setRequests] = useState([]);
   const [staffList, setStaffList] = useState([]);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(todayIso());
+  const [dateTo, setDateTo] = useState(todayIso());
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [reviewing, setReviewing] = useState(null);
   const [loading, setLoading] = useState(false);
