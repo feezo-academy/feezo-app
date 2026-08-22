@@ -229,43 +229,64 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
   useEffect(() => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-    const allItems = [
-      ...enquiryPending.map(q => ({ id: `enq-${q.id}`, title: '⏰ Enquiry follow-up', body: `${q.name} — reminder ${q.reminder_date}` })),
-      ...leavePending.map(l => ({ id: `leave-${l.id}`, title: '🌴 Leave request', body: `${l.staff_name} — ${l.date}` })),
-      ...taskPending.map(t => ({ id: `task-${t.id}`, title: '✅ Task alert', body: `${t.task} — ${t.date}` })),
-      ...performancePending.map(p => ({ id: `perf-${p.id}`, title: '🏆 Performance due', body: `${p.studentName} — ${p.programName}` })),
+    const categories = [
+      { key: 'enq', emoji: '⏰', label: 'Enquiry follow-up', items: enquiryPending },
+      { key: 'leave', emoji: '🌴', label: 'Leave request', items: leavePending },
+      { key: 'task', emoji: '✅', label: 'Task alert', items: taskPending },
+      { key: 'perf', emoji: '🏆', label: 'Performance due', items: performancePending },
     ];
 
+    const allItems = categories.flatMap(c => c.items.map(item => ({ catKey: c.key, id: `${c.key}-${item.id}` })));
+
     if (notifFirstRunRef.current) {
+      // Don't fire a burst of notifications for everything already pending
+      // when the tab first loads — only notify for items that show up *after*.
       allItems.forEach(item => notifiedIdsRef.current.add(item.id));
       notifFirstRunRef.current = false;
       return;
     }
 
+    // Count only the genuinely NEW items since last run, grouped by category.
+    const newCountByCat = {};
     allItems.forEach(item => {
       if (notifiedIdsRef.current.has(item.id)) return;
       notifiedIdsRef.current.add(item.id);
-
-      const opts = { body: item.body, icon: logoUrl || '/favicon.ico' };
-      const reg = swRegistrationRef.current;
-
-      if (reg && reg.showNotification) {
-        // Preferred path — works on Android Chrome as well as desktop.
-        reg.showNotification(item.title, opts).catch(err =>
-          console.warn('showNotification failed:', err));
-      } else {
-        // Fallback for browsers where the service worker hasn't finished
-        // registering yet, or doesn't support it — desktop Chrome/Firefox
-        // still allow the direct constructor. Android Chrome would throw
-        // here, hence the try/catch.
-        try {
-          new Notification(item.title, opts);
-        } catch (err) {
-          console.warn('Notification not supported in this browser context:', err);
-        }
-      }
+      newCountByCat[item.catKey] = (newCountByCat[item.catKey] || 0) + 1;
     });
-  }, [enquiryPending, leavePending, taskPending, performancePending, logoUrl]);
+
+    const totalNew = Object.values(newCountByCat).reduce((sum, n) => sum + n, 0);
+    if (totalNew === 0) return; // nothing new this cycle — no notification
+
+    // One notification for everything new, however many categories/items —
+    // never one-per-item.
+    const parts = categories
+      .filter(c => newCountByCat[c.key] > 0)
+      .map(c => `${c.emoji} ${newCountByCat[c.key]} ${c.label}${newCountByCat[c.key] > 1 ? 's' : ''}`);
+
+    const title = totalNew === 1 ? parts[0] : `🔔 ${totalNew} new updates in FeeZo`;
+    const body = parts.join(' · ');
+    // `tag` makes this replace any previous FeeZo notification still
+    // showing, instead of stacking a second one, in case this effect
+    // somehow ran twice in quick succession.
+    const opts = { body, icon: '/icons/notification-icon.png', tag: 'feezo-pending-updates' };
+    const reg = swRegistrationRef.current;
+
+    if (reg && reg.showNotification) {
+      // Preferred path — works on Android Chrome as well as desktop.
+      reg.showNotification(title, opts).catch(err =>
+        console.warn('showNotification failed:', err));
+    } else {
+      // Fallback for browsers where the service worker hasn't finished
+      // registering yet, or doesn't support it — desktop Chrome/Firefox
+      // still allow the direct constructor. Android Chrome would throw
+      // here, hence the try/catch.
+      try {
+        new Notification(title, opts);
+      } catch (err) {
+        console.warn('Notification not supported in this browser context:', err);
+      }
+    }
+  }, [enquiryPending, leavePending, taskPending, performancePending]);
 
   const dotFor = (urgency) => urgency.overdue > 0 ? '#ef4444' : (urgency.dueSoon > 0 ? '#f97316' : null);
   const enquiryDot = dotFor(enquiryUrgency);
