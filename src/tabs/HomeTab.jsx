@@ -24,6 +24,34 @@ function CustomTooltip({ active, payload, label, mode }) {
   );
 }
 
+// Same centered popup used by StudentsTab's / AttendanceTab's Sport/Batch/Sort
+// filters — a dark overlay + a card of radio rows, closing itself on selection.
+function FilterPopup({ title, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{title}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RadioRow({ name, checked, onChange, label }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+      <input type="radio" name={name} checked={checked} onChange={onChange} />
+      {label}
+    </label>
+  );
+}
+
 const todayIso = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -84,6 +112,7 @@ export default function HomeTab() {
   const [year, setYear] = useState(today.getFullYear());
   const [sportFilter, setSportFilter] = useState('ALL');
   const [batchFilter, setBatchFilter] = useState('ALL');
+  const [popup, setPopup] = useState(null); // 'sport' | 'batch' | null
   const [fees, setFees] = useState([]);
   const [allAttendance, setAllAttendance] = useState([]);
   const [chartMode, setChartMode] = useState('attendance'); // 'attendance' | 'strength'
@@ -396,6 +425,8 @@ export default function HomeTab() {
     }
   };
 
+  const batchesForSport = visibleBatches.filter(b => sportFilter === 'ALL' || b.sport === sportFilter);
+
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingBottom: 90 }}>
       <div style={{ marginBottom: 14 }}>
@@ -408,20 +439,32 @@ export default function HomeTab() {
           <button className="my-nav-btn yr" onClick={() => nav('year', 1)} title="Next Year">&gt;&gt;</button>
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-          <select className="form-select" style={{ flex: 1, fontSize: 12, padding: '7px 9px' }}
-            value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter('ALL'); }}>
-            <option value="ALL">All Sports</option>
-            {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-          </select>
-          <select className="form-select" style={{ flex: 1, fontSize: 12, padding: '7px 9px' }}
-            value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
-            <option value="ALL">All Batches</option>
-            {visibleBatches.filter(b => sportFilter === 'ALL' || b.sport === sportFilter).map(b => (
-              <option key={b.id} value={b.batchLabel}>{b.batchLabel}</option>
-            ))}
-          </select>
+          <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 12, padding: '7px 9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('sport')}>
+            {sportFilter === 'ALL' ? 'All Sports' : sportFilter}
+          </button>
+          <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 12, padding: '7px 9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('batch')}>
+            {batchFilter === 'ALL' ? 'All Batches' : batchFilter}
+          </button>
         </div>
       </div>
+
+      {popup === 'sport' && (
+        <FilterPopup title="Select Sport" onClose={() => setPopup(null)}>
+          <RadioRow name="sportsel" checked={sportFilter === 'ALL'} onChange={() => { setSportFilter('ALL'); setBatchFilter('ALL'); setPopup(null); }} label="All Sports" />
+          {visibleSports.map(s => (
+            <RadioRow key={s.id} name="sportsel" checked={sportFilter === s.name} onChange={() => { setSportFilter(s.name); setBatchFilter('ALL'); setPopup(null); }} label={s.name} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'batch' && (
+        <FilterPopup title="Select Batch" onClose={() => setPopup(null)}>
+          <RadioRow name="batchsel" checked={batchFilter === 'ALL'} onChange={() => { setBatchFilter('ALL'); setPopup(null); }} label="All Batches" />
+          {batchesForSport.map(b => (
+            <RadioRow key={b.id} name="batchsel" checked={batchFilter === b.batchLabel} onChange={() => { setBatchFilter(b.batchLabel); setPopup(null); }} label={b.batchLabel} />
+          ))}
+        </FilterPopup>
+      )}
 
       <div className="stats-grid" style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
         {[
