@@ -4,11 +4,16 @@ import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase } from '../lib/supabaseClient';
 
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export default function LeaveCountPage() {
   const { academyId } = useAuth();
   const { visibleStudents } = useAcademyData();
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(todayIso());
+  const [dateTo, setDateTo] = useState(todayIso());
   const [leaves, setLeaves] = useState([]);
 
   useEffect(() => {
