@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -208,6 +208,37 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     dueSoon: performancePending.filter(p => !p.overdue).length,
   }), [performancePending]);
 
+  // ---- Browser notifications for pending items (only while this tab is open) ----
+  // Fires a native Chrome notification for anything NEW in the bell's four
+  // categories — not on every 60s poll re-render, and not for items that
+  // were already pending before this tab was opened (that would dump a
+  // burst of stale notifications on every page load).
+  const notifiedIdsRef = useRef(new Set());
+  const notifFirstRunRef = useRef(true);
+
+  useEffect(() => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    const allItems = [
+      ...enquiryPending.map(q => ({ id: `enq-${q.id}`, title: '⏰ Enquiry follow-up', body: `${q.name} — reminder ${q.reminder_date}` })),
+      ...leavePending.map(l => ({ id: `leave-${l.id}`, title: '🌴 Leave request', body: `${l.staff_name} — ${l.date}` })),
+      ...taskPending.map(t => ({ id: `task-${t.id}`, title: '✅ Task alert', body: `${t.task} — ${t.date}` })),
+      ...performancePending.map(p => ({ id: `perf-${p.id}`, title: '🏆 Performance due', body: `${p.studentName} — ${p.programName}` })),
+    ];
+
+    if (notifFirstRunRef.current) {
+      allItems.forEach(item => notifiedIdsRef.current.add(item.id));
+      notifFirstRunRef.current = false;
+      return;
+    }
+
+    allItems.forEach(item => {
+      if (notifiedIdsRef.current.has(item.id)) return;
+      notifiedIdsRef.current.add(item.id);
+      new Notification(item.title, { body: item.body, icon: logoUrl || '/favicon.ico' });
+    });
+  }, [enquiryPending, leavePending, taskPending, performancePending, logoUrl]);
+
   const dotFor = (urgency) => urgency.overdue > 0 ? '#ef4444' : (urgency.dueSoon > 0 ? '#f97316' : null);
   const enquiryDot = dotFor(enquiryUrgency);
   const leaveDot = dotFor(leaveUrgency);
@@ -218,6 +249,9 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     : (hasNotif ? '#22c55e' : null);
 
   const openBell = () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
     setShowBellMenu(s => !s);
     onToggleNotif?.();
   };
