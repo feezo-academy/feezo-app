@@ -27,6 +27,13 @@ function compareRollNo(a, b) {
   return ra.localeCompare(rb);
 }
 
+const SORT_OPTIONS = [
+  { v: 'roll_asc', l: 'Roll No ↑' },
+  { v: 'roll_desc', l: 'Roll No ↓' },
+  { v: 'name_az', l: 'Name A→Z' },
+  { v: 'name_za', l: 'Name Z→A' },
+];
+
 function RollBadge({ rollNo }) {
   return (
     <span style={{
@@ -39,6 +46,33 @@ function RollBadge({ rollNo }) {
   );
 }
 
+// Same centered popup used by PerformancePage's Program/Sport/Sort filters —
+// a dark overlay + a card of radio rows, closing itself on selection.
+function FilterPopup({ title, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 12, padding: 14, width: '85%', maxWidth: 320, maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,.4)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{title}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--gray)', cursor: 'pointer' }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RadioRow({ name, checked, onChange, label }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '7px 2px', cursor: 'pointer' }}>
+      <input type="radio" name={name} checked={checked} onChange={onChange} />
+      {label}
+    </label>
+  );
+}
 
 export default function StudentsTab() {
   const { visibleStudents, students, visibleSports, visibleBatches, refresh } = useAcademyData();
@@ -47,6 +81,7 @@ export default function StudentsTab() {
   const [sportFilter, setSportFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [sortBy, setSortBy] = useState('roll_asc');
+  const [popup, setPopup] = useState(null); // 'sport' | 'batch' | 'sort' | null
   const [selected, setSelected] = useState(new Set());
   const [showAdd, setShowAdd] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'dropped' — toggled by the counter pills
@@ -83,6 +118,13 @@ export default function StudentsTab() {
   const droppedList = useMemo(() => filtered.filter(s => s.banned), [filtered]);
 
   const batchesForSport = visibleBatches.filter(b => !sportFilter || b.sport === sportFilter);
+
+  const selectSport = (sportName) => {
+    setSportFilter(sportName);
+    const firstBatch = visibleBatches.find(b => b.sport === sportName);
+    setBatchFilter(sportName ? (firstBatch ? firstBatch.name : '') : '');
+    setPopup(null);
+  };
 
   // Active and Dropped are selected as two separate groups — selecting a
   // checkbox in one group clears whatever was selected in the other, so
@@ -144,6 +186,9 @@ export default function StudentsTab() {
     });
   };
 
+  const selectedBatchLabel = batchesForSport.find(b => b.name === batchFilter)?.batchLabel;
+  const selectedSortLabel = SORT_OPTIONS.find(o => o.v === sortBy)?.l;
+
   return (
     <div className="page active" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
@@ -201,31 +246,45 @@ export default function StudentsTab() {
             value={search} onChange={e => setSearch(e.target.value)} />
           {search && <button type="button" className="search-clear-btn" onClick={() => setSearch('')} aria-label="Clear search">✕</button>}
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
-            value={sportFilter} onChange={e => {
-              const newSport = e.target.value;
-              setSportFilter(newSport);
-              const firstBatch = visibleBatches.find(b => b.sport === newSport);
-              setBatchFilter(newSport ? (firstBatch ? firstBatch.name : '') : '');
-            }}>
-            <option value="">All Sports</option>
-            {visibleSports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-          </select>
-          <select className="form-select" style={{ flex: 1, minWidth: 110, fontSize: 12, padding: '7px 9px' }}
-            value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
-            <option value="">All Batches</option>
-            {batchesForSport.map(b => <option key={b.id} value={b.name}>{b.batchLabel}</option>)}
-          </select>
-          <select className="form-select" style={{ flex: 1, minWidth: 120, fontSize: 12, padding: '7px 9px' }}
-            value={sortBy} onChange={e => setSortBy(e.target.value)}>
-            <option value="roll_asc">Roll No ↑</option>
-            <option value="roll_desc">Roll No ↓</option>
-            <option value="name_az">Name A→Z</option>
-            <option value="name_za">Name Z→A</option>
-          </select>
+        {/* sport / batch / sort — single row, opens the same popup style as Performance's filters */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('sport')}>
+            {sportFilter || 'All Sports'}
+          </button>
+          <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('batch')}>
+            {selectedBatchLabel || 'All Batches'}
+          </button>
+          <button className="btn btn-outline btn-sm" style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => setPopup('sort')}>
+            {selectedSortLabel || 'Sort'}
+          </button>
         </div>
       </div>
+
+      {popup === 'sport' && (
+        <FilterPopup title="Select Sport" onClose={() => setPopup(null)}>
+          <RadioRow name="sportsel" checked={!sportFilter} onChange={() => selectSport('')} label="All Sports" />
+          {visibleSports.map(s => (
+            <RadioRow key={s.id} name="sportsel" checked={sportFilter === s.name} onChange={() => selectSport(s.name)} label={s.name} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'batch' && (
+        <FilterPopup title="Select Batch" onClose={() => setPopup(null)}>
+          <RadioRow name="batchsel" checked={!batchFilter} onChange={() => { setBatchFilter(''); setPopup(null); }} label="All Batches" />
+          {batchesForSport.map(b => (
+            <RadioRow key={b.id} name="batchsel" checked={batchFilter === b.name} onChange={() => { setBatchFilter(b.name); setPopup(null); }} label={b.batchLabel} />
+          ))}
+        </FilterPopup>
+      )}
+
+      {popup === 'sort' && (
+        <FilterPopup title="Sort By" onClose={() => setPopup(null)}>
+          {SORT_OPTIONS.map(o => (
+            <RadioRow key={o.v} name="sortsel" checked={sortBy === o.v} onChange={() => { setSortBy(o.v); setPopup(null); }} label={o.l} />
+          ))}
+        </FilterPopup>
+      )}
 
       {selected.size > 0 && (
         <div style={{ background: 'var(--accent)', border: '1px solid var(--accent2)', borderRadius: 10, padding: '7px 8px', marginBottom: 8 }}>
