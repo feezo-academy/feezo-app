@@ -4,7 +4,6 @@ import { useAcademyData } from '../context/AcademyDataContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import StatDrilldownModal from '../components/StatDrilldownModal';
-import { useLoading } from '../components/LoadingContext';
 
 function CustomTooltip({ active, payload, label, mode }) {
   if (!active || !payload || !payload.length) return null;
@@ -106,7 +105,7 @@ function isEligible(student, year, month, attendanceByStudent, sport, batchLabel
 export default function HomeTab() {
   const { visibleStudents, visibleSports, visibleBatches } = useAcademyData();
   const { academyId, isAdmin } = useAuth();
-  const { showLoader, hideLoader } = useLoading();
+  const [dataLoaded, setDataLoaded] = useState(false);
   const today = new Date();
   const [month, setMonth] = useState(today.getMonth());
   const [year, setYear] = useState(today.getFullYear());
@@ -145,8 +144,7 @@ export default function HomeTab() {
   // causing multi-sport students' records to bleed across sport filters.
   useEffect(() => {
     (async () => {
-      if (!academyId) { setFees([]); setAllAttendance([]); return; }
-      showLoader('Loading dashboard...');
+      if (!academyId) { setFees([]); setAllAttendance([]); setDataLoaded(true); return; }
       try {
         const monthStartIso = `${year}-${String(month + 1).padStart(2, '0')}-01`;
         const rangeEndIso = isFutureMonth
@@ -161,8 +159,10 @@ export default function HomeTab() {
         ]);
         setFees(feesRes.data || []);
         setAllAttendance(attendanceRes.data || []);
+      } catch (err) {
+        console.error('HomeTab: failed to load dashboard data', err);
       } finally {
-        hideLoader();
+        setDataLoaded(true);
       }
     })();
   }, [academyId, month, year]);
