@@ -232,7 +232,7 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     const categories = [
       { key: 'enq', emoji: '⏰', label: 'Enquiry follow-up',
         items: enquiryPending.map(q => ({ id: q.id, detail: `${q.name} — reminder ${q.reminder_date}` })) },
-      { key: 'leave', emoji: '🌴', label: 'Leave request',
+      { key: 'leave', emoji: '⏳', label: 'Leave request',
         items: leavePending.map(l => ({ id: l.id, detail: `${l.staff_name} — ${l.date}` })) },
       { key: 'task', emoji: '✅', label: 'Task alert',
         items: taskPending.map(t => ({ id: t.id, detail: `${t.task} — ${t.date}` })) },
