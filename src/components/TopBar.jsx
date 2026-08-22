@@ -412,7 +412,7 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
                     >
                       <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
                         {leaveDot && <span style={{ width: 8, height: 8, borderRadius: '50%', background: leaveDot, flexShrink: 0 }} />}
-                        Leave Alerts
+                        ⏳ Leave Alerts
                       </span>
                       <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)' }}>{leavePending.length}</span>
                     </div>
