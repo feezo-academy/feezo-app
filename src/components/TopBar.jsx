@@ -251,7 +251,9 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
       return;
     }
 
-    // Collect only the genuinely NEW items since last run.
+    // Collect only the genuinely NEW items since last run — this still
+    // decides WHETHER to notify, so we don't re-notify every 60s poll for
+    // the same pending stuff.
     const newItems = [];
     allItems.forEach(item => {
       if (notifiedIdsRef.current.has(item.id)) return;
@@ -260,46 +262,64 @@ export default function TopBar({ academyName, logoUrl, greeting, onToggleMenu, o
     });
     if (newItems.length === 0) return; // nothing new this cycle — no notification
 
-    // One notification for everything new, however many categories/items —
-    // never one-per-item. A single new item gets its own detail line instead
-    // of a generic "1 X" summary repeated as both title and body.
+    // The notification BODY summarizes the TOTAL current pending count per
+    // category — not just what's new — so opening it always reflects
+    // everything still pending, not just the delta that triggered it.
+    const totalByCat = {};
+    categories.forEach(c => { totalByCat[c.key] = c.items.length; });
+    const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0);
+    const activeCats = categories.filter(c => totalByCat[c.key] > 0);
+
     let title, body;
-    if (newItems.length === 1) {
-      const cat = categories.find(c => c.key === newItems[0].catKey);
-      title = `${cat.emoji} ${cat.label}`;
-      body = newItems[0].detail;
+    if (totalCount === 1) {
+      const onlyCat = activeCats[0];
+      title = `${onlyCat.emoji} ${onlyCat.label}`;
+      body = onlyCat.items[0].detail;
     } else {
-      const countByCat = {};
-      newItems.forEach(i => { countByCat[i.catKey] = (countByCat[i.catKey] || 0) + 1; });
-      const parts = categories
-        .filter(c => countByCat[c.key] > 0)
-        .map(c => `${c.emoji} ${countByCat[c.key]} ${c.label}${countByCat[c.key] > 1 ? 's' : ''}`);
-      title = `🔔 ${newItems.length} new updates in FeeZo`;
+      const parts = activeCats.map(c => `${c.emoji} ${totalByCat[c.key]} ${c.label}${totalByCat[c.key] > 1 ? 's' : ''}`);
+      title = `🔔 ${totalCount} pending in FeeZo`;
       body = parts.join(' · ');
     }
 
+    // Where a tap should land. Single active category → its path directly.
+    // Multiple → prioritize whichever category has an overdue item, since
+    // that's the more urgent thing to route the user toward. The bell menu
+    // in-app still covers the rest of the categories.
+    const pathFor = { enq: enquiriesPath, leave: calendarPath, task: calendarPath, perf: performancePath };
+    const urgencyByCat = { enq: enquiryUrgency, leave: leaveUrgency, task: taskUrgency, perf: performanceUrgency };
+    const targetCat = activeCats.find(c => urgencyByCat[c.key].overdue > 0) || activeCats[0];
+    const targetUrl = targetCat ? pathFor[targetCat.key] : '/';
+
     // `tag` makes this replace any previous FeeZo notification still
     // showing, instead of stacking a second one, in case this effect
-    // somehow ran twice in quick succession.
-    const opts = { body, icon: '/icons/notification-icon.png', tag: 'feezo-pending-updates' };
+    // somehow ran twice in quick succession. `data.url` is read by
+    // sw.js's notificationclick handler to route a tap to the right page.
+    const opts = { body, icon: '/icons/notification-icon.png', tag: 'feezo-pending-updates', data: { url: targetUrl } };
     const reg = swRegistrationRef.current;
 
     if (reg && reg.showNotification) {
       // Preferred path — works on Android Chrome as well as desktop.
+      // Click handling for this path lives in sw.js (notificationclick).
       reg.showNotification(title, opts).catch(err =>
         console.warn('showNotification failed:', err));
     } else {
       // Fallback for browsers where the service worker hasn't finished
       // registering yet, or doesn't support it — desktop Chrome/Firefox
       // still allow the direct constructor. Android Chrome would throw
-      // here, hence the try/catch.
+      // here, hence the try/catch. This path isn't routed through the
+      // service worker, so it needs its own click handler.
       try {
-        new Notification(title, opts);
+        const n = new Notification(title, opts);
+        n.onclick = () => {
+          window.focus();
+          navigate(targetUrl);
+          n.close();
+        };
       } catch (err) {
         console.warn('Notification not supported in this browser context:', err);
       }
     }
-  }, [enquiryPending, leavePending, taskPending, performancePending]);
+  }, [enquiryPending, leavePending, taskPending, performancePending, enquiryUrgency, leaveUrgency, taskUrgency, performanceUrgency, navigate, enquiriesPath, calendarPath, performancePath]);
 
   const dotFor = (urgency) => urgency.overdue > 0 ? '#ef4444' : (urgency.dueSoon > 0 ? '#f97316' : null);
   const enquiryDot = dotFor(enquiryUrgency);
