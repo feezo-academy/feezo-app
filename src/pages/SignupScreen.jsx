@@ -286,10 +286,10 @@ export default function SignupScreen() {
         .signup-compact .login-sub { font-size: 12px; margin-bottom: 14px; }
         .signup-compact .login-field { margin-bottom: 10px; }
         .signup-compact .login-field label { font-size: 11.5px; margin-bottom: 4px; }
-        .signup-compact .field-wrap input { font-size: 12.5px; padding-top: 3px; padding-bottom: 3px; }
-        .signup-compact .field-wrap input::placeholder { font-size: 12px; }
-        .signup-compact .login-ico svg { width: 13px; height: 13px; }
-        .signup-compact .login-eye svg { width: 14px; height: 14px; }
+        .signup-compact .field-wrap input { font-size: 12px; padding-top: 1px; padding-bottom: 1px; }
+        .signup-compact .field-wrap input::placeholder { font-size: 11.5px; }
+        .signup-compact .login-ico svg { width: 12px; height: 12px; }
+        .signup-compact .login-eye svg { width: 13px; height: 13px; }
         .signup-compact .field-wrap { min-height: 0; }
         .signup-compact .btn-login { padding-top: 11px; padding-bottom: 11px; font-size: 14px; margin-top: 4px; }
         .signup-compact .cc-prefix { font-size: 13px; font-weight: 600; color: #444; padding-right: 6px; border-right: 1px solid rgba(150,150,150,.35); margin-right: 8px; }
