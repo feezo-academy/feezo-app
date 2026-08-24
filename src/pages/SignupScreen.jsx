@@ -36,6 +36,21 @@ function normalizeEmail(raw) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// academies.slug is a separate, url-safe identifier from academies.name —
+// derive it automatically so users only have to type a normal academy name.
+function slugify(name) {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-+|-+$)/g, '');
+  // Append a short random suffix so two academies with similar names
+  // ("Sunrise Sports" / "Sunrise Sports Academy") don't collide on a
+  // unique slug column.
+  const suffix = Math.random().toString(36).slice(2, 6);
+  return base ? `${base}-${suffix}` : suffix;
+}
+
 export default function SignupScreen() {
   const navigate = useNavigate();
 
@@ -90,7 +105,7 @@ export default function SignupScreen() {
       // Create the academy record.
       const { data: academy, error: academyError } = await supabase
         .from('academies')
-        .insert({ name: academyName.trim(), contact_number: digitsOnly })
+        .insert({ name: academyName.trim(), slug: slugify(academyName), phone: digitsOnly })
         .select()
         .single();
       if (academyError) throw academyError;
