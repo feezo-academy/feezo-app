@@ -221,9 +221,9 @@ export default function SignupScreen() {
         )}
 
         <ul className="pwck-list">
-          <li className={check.hasLength ? 'pwck-ok' : ''}><i className="ti ti-check" /> Use at least 8 characters</li>
-          <li className={check.hasUpper && check.hasLower ? 'pwck-ok' : ''}><i className="ti ti-check" /> Include at least 1 uppercase letter and 1 lowercase letter</li>
-          <li className={check.hasNumberOrSymbol ? 'pwck-ok' : ''}><i className="ti ti-check" /> Include at least 1 number or 1 symbol (e.g. !@#$%^&*-+)</li>
+          <li className={check.hasLength && check.hasUpper && check.hasLower && check.hasNumberOrSymbol ? 'pwck-ok' : ''}>
+            <i className="ti ti-check" /> 8+ chars · upper &amp; lowercase · number or symbol
+          </li>
         </ul>
 
         <div className="login-field">
@@ -272,9 +272,9 @@ export default function SignupScreen() {
         .pwck-bar-fill.pwck-weak { background: #e8392f; }
         .pwck-bar-fill.pwck-medium { background: #d98c00; }
         .pwck-bar-fill.pwck-strong { background: #1f9d55; }
-        .pwck-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-        .pwck-list li { display: flex; align-items: flex-start; gap: 6px; font-size: 10px; line-height: 1.25; color: var(--gray); opacity: .75; text-align: left; }
-        .pwck-list li i { font-size: 11px; flex: 0 0 auto; line-height: 1.25; }
+        .pwck-list { list-style: none; margin: 0 0 8px; padding: 0; }
+        .pwck-list li { display: flex; align-items: center; gap: 5px; font-size: 9.5px; line-height: 1.2; color: var(--gray); opacity: .75; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pwck-list li i { font-size: 10px; flex: 0 0 auto; }
         .pwck-list li.pwck-ok { color: #1f9d55; opacity: 1; font-weight: 500; }
         .pwck-mismatch { color: #e8392f; font-size: 10.5px; margin-top: 4px; }
 
@@ -286,11 +286,12 @@ export default function SignupScreen() {
         .signup-compact .login-sub { font-size: 12px; margin-bottom: 14px; }
         .signup-compact .login-field { margin-bottom: 10px; }
         .signup-compact .login-field label { font-size: 11.5px; margin-bottom: 4px; }
-        .signup-compact .field-wrap input { font-size: 12px; padding-top: 1px; padding-bottom: 1px; }
+        .signup-compact .field-wrap input { font-size: 12px; line-height: 1.1; padding-top: 0; padding-bottom: 0; height: 30px; }
         .signup-compact .field-wrap input::placeholder { font-size: 11.5px; }
         .signup-compact .login-ico svg { width: 12px; height: 12px; }
         .signup-compact .login-eye svg { width: 13px; height: 13px; }
         .signup-compact .field-wrap { min-height: 0; }
+        .signup-compact .cc-prefix { line-height: 1.1; }
         .signup-compact .btn-login { padding-top: 11px; padding-bottom: 11px; font-size: 14px; margin-top: 4px; }
         .signup-compact .cc-prefix { font-size: 13px; font-weight: 600; color: #444; padding-right: 6px; border-right: 1px solid rgba(150,150,150,.35); margin-right: 8px; }
       `}</style>
