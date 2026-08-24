@@ -272,9 +272,9 @@ export default function SignupScreen() {
         .pwck-bar-fill.pwck-weak { background: #e8392f; }
         .pwck-bar-fill.pwck-medium { background: #d98c00; }
         .pwck-bar-fill.pwck-strong { background: #1f9d55; }
-        .pwck-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-        .pwck-list li { display: flex; align-items: center; gap: 6px; font-size: 10px; line-height: 1.3; color: var(--gray); opacity: .75; }
-        .pwck-list li i { font-size: 11px; }
+        .pwck-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+        .pwck-list li { display: flex; align-items: flex-start; gap: 6px; font-size: 10px; line-height: 1.25; color: var(--gray); opacity: .75; }
+        .pwck-list li i { font-size: 11px; flex: 0 0 auto; line-height: 1.25; }
         .pwck-list li.pwck-ok { color: #1f9d55; opacity: 1; font-weight: 500; }
         .pwck-mismatch { color: #e8392f; font-size: 10.5px; margin-top: 4px; }
 
