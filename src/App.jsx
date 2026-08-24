@@ -8,8 +8,7 @@ import GlobalLoaderOverlay from './components/GlobalLoaderOverlay';
 import CircularLoader from './components/CircularLoader';
 import useSwipeNav, { SWIPE_TABS } from './hooks/useSwipeNav';
 import LoginScreen from './pages/LoginScreen';
-import SignupDetailsScreen from './pages/SignupDetailsScreen';
-import SignupPasswordScreen from './pages/SignupPasswordScreen';
+import SignupScreen from './pages/SignupScreen';
 import SignupSuccessScreen from './pages/SignupSuccessScreen';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
@@ -159,8 +158,8 @@ export default function App() {
     // behavior — still falls through to LoginScreen, same as before.
     return (
       <Routes>
-        <Route path="/signup" element={<SignupDetailsScreen />} />
-        <Route path="/signup/password" element={<SignupPasswordScreen />} />
+        <Route path="/signup" element={<SignupScreen />} />
+        <Route path="/signup/password" element={<Navigate to="/signup" replace />} />
         <Route path="/signup/success" element={<SignupSuccessScreen />} />
         <Route path="*" element={<LoginScreen />} />
       </Routes>
