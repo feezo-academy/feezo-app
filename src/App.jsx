@@ -8,6 +8,9 @@ import GlobalLoaderOverlay from './components/GlobalLoaderOverlay';
 import CircularLoader from './components/CircularLoader';
 import useSwipeNav, { SWIPE_TABS } from './hooks/useSwipeNav';
 import LoginScreen from './pages/LoginScreen';
+import SignupDetailsScreen from './pages/SignupDetailsScreen';
+import SignupPasswordScreen from './pages/SignupPasswordScreen';
+import SignupSuccessScreen from './pages/SignupSuccessScreen';
 import TopBar from './components/TopBar';
 import BottomNav from './components/BottomNav';
 import NavDrawer from './components/NavDrawer';
@@ -150,7 +153,19 @@ export default function App() {
     );
   }
 
-  if (!user) return <LoginScreen />;
+  if (!user) {
+    // Signup flow (academy details -> password -> success) is only ever
+    // seen while logged out. Any other path — including the old bare "/"
+    // behavior — still falls through to LoginScreen, same as before.
+    return (
+      <Routes>
+        <Route path="/signup" element={<SignupDetailsScreen />} />
+        <Route path="/signup/password" element={<SignupPasswordScreen />} />
+        <Route path="/signup/success" element={<SignupSuccessScreen />} />
+        <Route path="*" element={<LoginScreen />} />
+      </Routes>
+    );
+  }
 
   return (
     <AcademyDataProvider>
