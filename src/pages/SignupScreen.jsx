@@ -49,12 +49,10 @@ export default function SignupScreen() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const digitsOnly = useMemo(() => {
-    // Strip everything but digits, then take the last 10 — this drops a
-    // leading +91 / 91 country code automatically.
-    const d = contactNumber.replace(/\D/g, '');
-    return d.length > 10 ? d.slice(-10) : d;
-  }, [contactNumber]);
+  // contactNumber only ever holds digits typed after the fixed +91 prefix,
+  // capped at 10 by the input's onChange handler — so it IS the 10-digit
+  // number already, no stripping needed here.
+  const digitsOnly = contactNumber;
 
   const email = useMemo(() => normalizeEmail(usernameOrEmail), [usernameOrEmail]);
   const check = useMemo(() => evaluatePassword(password), [password]);
@@ -118,7 +116,7 @@ export default function SignupScreen() {
   );
 
   return (
-    <div id="loginScreen">
+    <div id="loginScreen" className="signup-compact">
       <AuthBackdrop />
       <div className="login-box">
         <div className="login-logo">
@@ -180,13 +178,15 @@ export default function SignupScreen() {
                 <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.85.55 2.81.68A2 2 0 0 1 22 16.92z" />
               </svg>
             </span>
+            <span className="cc-prefix">+91</span>
             <input
               type="tel"
+              inputMode="numeric"
               placeholder="10-digit number"
               autoComplete="off"
               value={contactNumber}
-              onChange={e => setContactNumber(e.target.value)}
-              maxLength={17}
+              onChange={e => setContactNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              maxLength={10}
             />
           </div>
         </div>
@@ -262,21 +262,35 @@ export default function SignupScreen() {
       </div>
 
       <style>{`
-        .pwck-strength-row { display: flex; align-items: center; gap: 10px; margin: -6px 0 14px; }
-        .pwck-strength-label { font-size: 12px; font-weight: 700; min-width: 46px; }
+        .pwck-strength-row { display: flex; align-items: center; gap: 10px; margin: -4px 0 8px; }
+        .pwck-strength-label { font-size: 10.5px; font-weight: 700; min-width: 40px; }
         .pwck-strength-label[data-level="Weak"] { color: #e8392f; }
         .pwck-strength-label[data-level="Medium"] { color: #d98c00; }
         .pwck-strength-label[data-level="Strong"] { color: #1f9d55; }
-        .pwck-bar-track { flex: 1; height: 5px; border-radius: 3px; background: rgba(150,150,150,.25); overflow: hidden; }
+        .pwck-bar-track { flex: 1; height: 4px; border-radius: 3px; background: rgba(150,150,150,.25); overflow: hidden; }
         .pwck-bar-fill { height: 100%; border-radius: 3px; transition: width .25s ease, background-color .25s ease; }
         .pwck-bar-fill.pwck-weak { background: #e8392f; }
         .pwck-bar-fill.pwck-medium { background: #d98c00; }
         .pwck-bar-fill.pwck-strong { background: #1f9d55; }
-        .pwck-list { list-style: none; margin: 0 0 18px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-        .pwck-list li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--gray); opacity: .75; }
-        .pwck-list li i { font-size: 15px; }
+        .pwck-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+        .pwck-list li { display: flex; align-items: center; gap: 6px; font-size: 10px; line-height: 1.3; color: var(--gray); opacity: .75; }
+        .pwck-list li i { font-size: 11px; }
         .pwck-list li.pwck-ok { color: #1f9d55; opacity: 1; font-weight: 500; }
-        .pwck-mismatch { color: #e8392f; font-size: 12px; margin-top: 6px; }
+        .pwck-mismatch { color: #e8392f; font-size: 10.5px; margin-top: 4px; }
+
+        /* Compact layout — this screen has more fields than the other
+           auth screens, so it gets its own tighter sizing instead of
+           changing the shared .login-box rules everyone else uses. */
+        .signup-compact .login-box { padding-top: 22px; padding-bottom: 22px; }
+        .signup-compact .login-title { font-size: 19px; margin-top: 6px; }
+        .signup-compact .login-sub { font-size: 12px; margin-bottom: 14px; }
+        .signup-compact .login-field { margin-bottom: 10px; }
+        .signup-compact .login-field label { font-size: 11.5px; margin-bottom: 4px; }
+        .signup-compact .field-wrap input { font-size: 13px; padding-top: 9px; padding-bottom: 9px; }
+        .signup-compact .field-wrap input::placeholder { font-size: 12.5px; }
+        .signup-compact .login-ico svg { width: 15px; height: 15px; }
+        .signup-compact .btn-login { padding-top: 11px; padding-bottom: 11px; font-size: 14px; margin-top: 4px; }
+        .signup-compact .cc-prefix { font-size: 13px; font-weight: 600; color: #444; padding-right: 6px; border-right: 1px solid rgba(150,150,150,.35); margin-right: 8px; }
       `}</style>
     </div>
   );
