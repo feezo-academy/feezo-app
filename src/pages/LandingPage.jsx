@@ -137,8 +137,7 @@ export default function LandingPage() {
             <a href="#faq">FAQ</a>
           </div>
           <div className="lp-nav-cta">
-            <Link to="/home" className="lp-nav-login">Log in</Link>
-            <Link to="/home" className="lp-btn lp-btn-primary lp-btn-sm">Start free trial</Link>
+            <Link to="/home" className="lp-btn lp-btn-primary lp-btn-sm">Log in</Link>
             <button className="lp-burger" aria-label="Menu" onClick={() => setMobileOpen(v => !v)}>
               <i className="ti ti-menu-2" />
             </button>
@@ -162,7 +161,7 @@ export default function LandingPage() {
             <h1 className="lp-reveal lp-d2">Replace the spreadsheet.<br />Keep the <span>trophy count.</span></h1>
             <p className="lp-lead lp-reveal lp-d3">FeeZo tracks attendance, fees, and performance for cricket, swimming, badminton and every other academy — so coaches coach, and owners stop chasing receipts on WhatsApp.</p>
             <div className="lp-hero-actions lp-reveal lp-d4">
-              <Link to="/home" className="lp-btn lp-btn-primary">Start free trial <i className="ti ti-arrow-right" /></Link>
+              <Link to="/signup" className="lp-btn lp-btn-primary">Start free trial <i className="ti ti-arrow-right" /></Link>
               <a href="#pricing" className="lp-btn lp-btn-ghost">See pricing</a>
             </div>
             <div className="lp-hero-note lp-reveal lp-d4"><i className="ti ti-shield-check" /> No card needed to try &nbsp;&middot;&nbsp; Set up an academy in under 10 minutes</div>
@@ -390,7 +389,7 @@ export default function LandingPage() {
           <h2>Ready to ditch the spreadsheet?</h2>
           <p>Set up your academy in the time it takes to plan tomorrow's session.</p>
           <div className="lp-cta-actions">
-            <Link to="/home" className="lp-btn lp-btn-dark">Start free trial</Link>
+            <Link to="/signup" className="lp-btn lp-btn-dark">Start free trial</Link>
             <a href="#pricing" className="lp-btn lp-btn-outline-lt">Compare plans</a>
           </div>
         </Reveal>
