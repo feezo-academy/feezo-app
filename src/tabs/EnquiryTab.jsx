@@ -88,7 +88,7 @@ function Field({ label, children }) {
   );
 }
 
-export default function EnquiryTab() {
+export default function EnquiryTab({ isActive = true }) {
   const { academyId, isAdmin, appUser } = useAuth();
   const { visibleSports, visibleBatches } = useAcademyData();
   const { isAtLimit, limits, plan, nextPlanForLimit } = usePlan();
@@ -145,6 +145,20 @@ export default function EnquiryTab() {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [academyId]);
+
+  // This tab stays mounted (display:none) when the user swipes away, but its
+  // FAB/modals are createPortal'd straight to document.body — that ignores
+  // the display:none, so they'd otherwise keep floating over other tabs.
+  // Closing everything on deactivate keeps this tab's overlays out of sight
+  // (and out of the way) whenever it isn't the one showing.
+  useEffect(() => {
+    if (!isActive) {
+      setShowAdd(false);
+      setDetail(null);
+      setEditing(false);
+      setPopup(null);
+    }
+  }, [isActive]);
 
   // ---- Realtime sync ----
   // Mirrors FeesTab's pattern: a dedicated channel on `enquiries` patches
@@ -480,7 +494,7 @@ export default function EnquiryTab() {
         })}
       </div>
 
-      {!showAdd && !detail && createPortal(
+      {isActive && !showAdd && !detail && createPortal(
         <button
           onClick={openAdd}
           disabled={atEnquiryLimit}
@@ -513,7 +527,7 @@ export default function EnquiryTab() {
         document.body
       )}
 
-      {showAdd && createPortal(
+      {isActive && showAdd && createPortal(
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 62, background: 'rgba(10,20,40,.55)', zIndex: 250, display: 'flex', alignItems: 'flex-end' }} onClick={() => setShowAdd(false)}>
           <div className="card" style={{ width: '100%', maxWidth: 480, margin: '0 auto', maxHeight: '85vh', overflowY: 'auto', padding: 16 }} onClick={e => e.stopPropagation()}>
             <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>💬 New Query</div>
@@ -558,7 +572,7 @@ export default function EnquiryTab() {
         document.body
       )}
 
-      {detail && createPortal(
+      {isActive && detail && createPortal(
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 62, background: 'rgba(10,20,40,.55)', zIndex: 250, display: 'flex', alignItems: 'flex-end' }} onClick={closeDetail}>
           <div className="card" style={{ width: '100%', maxWidth: 480, margin: '0 auto', maxHeight: '85vh', overflowY: 'auto', padding: 16 }} onClick={e => e.stopPropagation()}>
             {!editing ? (
