@@ -73,7 +73,7 @@ function MainTabsHost({ pathname, animClass }) {
           className={path === pathname ? animClass : ''}
           style={{ position: 'absolute', inset: 0, display: path === pathname ? 'block' : 'none' }}
         >
-          <Component />
+          <Component isActive={path === pathname} />
         </div>
       ))}
     </>
